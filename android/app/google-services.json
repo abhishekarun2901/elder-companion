@@ -1,0 +1,38 @@
+{
+  "project_info": {
+    "project_number": "965792184735",
+    "project_id": "mitra-e870d",
+    "storage_bucket": "mitra-e870d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:965792184735:android:e9f924a3b8f2d80dc525aa",
+        "android_client_info": {
+          "package_name": "com.example.mitra"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "965792184735-s3lsg680v55pbrine8ovhfv4sqtecd7s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.mitra",
+            "certificate_hash": "098f97f2af5f03f1a71600f7cad1e20f00391111"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAO73wFuBKy5DvL3b9MBq6tKpXwrhC2Jzc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
