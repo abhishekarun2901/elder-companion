@@ -2,17 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'firebase_options.dart';
-import 'auth_wrapper.dart';       // Elder login/auth screen
+import 'auth_wrapper.dart'; // Elder login/auth screen
 import 'caregiver_dashboard.dart'; // Caregiver dashboard
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'services/notification_service.dart';
+import 'services/push_notification_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'login_options_screen.dart';
 import 'phone_login_screen.dart';
 
-
-
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint("Handling a background message: ${message.messageId}");
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,17 +35,21 @@ Future<void> main() async {
 
   // ✅ Platform-safe Firebase initialization
   if (kIsWeb) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.web,
-    );
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
   } else {
     await Firebase.initializeApp();
   }
 
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  
+  try {
+    await PushNotificationService().init();
+  } catch (e) {
+    debugPrint("Failed to initialize push notifications: $e");
+  }
+
   runApp(const ElderlyCareApp());
 }
-
-
 
 class ElderlyCareApp extends StatelessWidget {
   const ElderlyCareApp({super.key});
@@ -72,8 +82,6 @@ class ElderlyCareApp extends StatelessWidget {
   }
 }
 
-
-
 // ------------------- Role Selection Screen -------------------
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
@@ -85,14 +93,18 @@ class RoleSelectionScreen extends StatelessWidget {
     if (role == 'elder') {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const LoginOptionsScreen(role: 'Elder')),
+        MaterialPageRoute(
+          builder: (_) => const LoginOptionsScreen(role: 'Elder'),
+        ),
       );
     } else {
       // Caregiver goes directly to login (assuming they just login to manage)
       // Or if you want signup for them too, use LoginOptionsScreen
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const PhoneLoginScreen(isLogin: true)), 
+        MaterialPageRoute(
+          builder: (_) => const PhoneLoginScreen(isLogin: true),
+        ),
       );
     }
   }

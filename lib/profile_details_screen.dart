@@ -15,7 +15,7 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _ageController = TextEditingController();
-  
+
   // Caregiver Details
   final _caregiverNameController = TextEditingController();
   final _caregiverPhoneController = TextEditingController();
@@ -27,6 +27,61 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
   final _interestsController = TextEditingController();
 
   bool _isLoading = false;
+  bool _isFetching = true; // Added to show loading while fetching data
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => _isFetching = false);
+      return;
+    }
+
+    try {
+      final docSnapshot = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (docSnapshot.exists && docSnapshot.data() != null) {
+        final data = docSnapshot.data()!;
+        setState(() {
+          _nameController.text = data['name'] ?? '';
+          _ageController.text = (data['age'] ?? '').toString();
+          
+          _caregiverNameController.text = data['caregiverName'] ?? '';
+          
+          // Remove the +91 prefix for the UI if it exists, since the UI expects 10 digits
+          String cgPhone = data['caregiverPhone'] ?? '';
+          if (cgPhone.startsWith('+91')) {
+            cgPhone = cgPhone.substring(3);
+          }
+          _caregiverPhoneController.text = cgPhone;
+
+          if (data['emergencyContact'] != null) {
+            _emergencyNameController.text = data['emergencyContact']['name'] ?? '';
+            _emergencyPhoneController.text = data['emergencyContact']['phone'] ?? '';
+          }
+
+          _hobbiesController.text = data['hobbies'] ?? '';
+          _skillsController.text = data['skills'] ?? '';
+          _interestsController.text = data['interests'] ?? '';
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading profile data: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load profile: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isFetching = false);
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -55,12 +110,17 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
 
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('FATAL: User is not logged in!'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('FATAL: User is not logged in!'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    setState(() { _isLoading = true; });
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
       // Data to be saved
@@ -71,7 +131,8 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
         'name': _nameController.text,
         'age': int.tryParse(_ageController.text) ?? 0,
         'caregiverName': _caregiverNameController.text,
-        'caregiverPhone': '+91${_caregiverPhoneController.text.trim()}', // Standardize format for matching
+        'caregiverPhone':
+            '+91${_caregiverPhoneController.text.trim()}', // Standardize format for matching
         'emergencyContact': {
           'name': _emergencyNameController.text,
           'phone': _emergencyPhoneController.text,
@@ -83,20 +144,27 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
       };
 
       // Save to Firestore
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(profileData);
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(profileData);
 
       // Navigate to home screen and remove all previous routes
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const HomeScreen()),
-            (Route<dynamic> route) => false,
+        (Route<dynamic> route) => false,
       );
-
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save profile: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Failed to save profile: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
-      setState(() { _isLoading = false; });
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -104,12 +172,18 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Complete Your Profile', style: TextStyle(fontSize: 28)),
+        title: const Text(
+          'Complete Your Profile',
+          style: TextStyle(fontSize: 28),
+        ),
         automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
-        child: Form( // Wrap UI with a Form widget
+        child: _isFetching 
+          ? const Center(child: CircularProgressIndicator())
+          : Form(
+          // Wrap UI with a Form widget
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -118,24 +192,63 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
               // CORRECT IMPLEMENTATION: Widgets are built here, inside the build method
               //
               _buildSectionTitle('Your Essential Details', Colors.teal),
-              ElderFriendlyTextField(controller: _nameController, label: 'What is your full name?', isRequired: true),
-              ElderFriendlyTextField(controller: _ageController, label: 'Your Age (Years)', keyboardType: TextInputType.number, isRequired: true),
+              ElderFriendlyTextField(
+                controller: _nameController,
+                label: 'What is your full name?',
+                isRequired: true,
+              ),
+              ElderFriendlyTextField(
+                controller: _ageController,
+                label: 'Your Age (Years)',
+                keyboardType: TextInputType.number,
+                isRequired: true,
+              ),
               const SizedBox(height: 30),
 
               _buildSectionTitle('Caregiver Details', Colors.orange),
-              ElderFriendlyTextField(controller: _caregiverNameController, label: 'Caregiver\'s Name', isRequired: true),
-              ElderFriendlyTextField(controller: _caregiverPhoneController, label: 'Caregiver Phone (10-digit)', keyboardType: TextInputType.phone, isRequired: true),
+              ElderFriendlyTextField(
+                controller: _caregiverNameController,
+                label: 'Caregiver\'s Name',
+                isRequired: true,
+              ),
+              ElderFriendlyTextField(
+                controller: _caregiverPhoneController,
+                label: 'Caregiver Phone (10-digit)',
+                keyboardType: TextInputType.phone,
+                isRequired: true,
+              ),
               const SizedBox(height: 30),
 
               _buildSectionTitle('Emergency Contact', Colors.red),
-              ElderFriendlyTextField(controller: _emergencyNameController, label: 'Emergency Person\'s Name', isRequired: true),
-              ElderFriendlyTextField(controller: _emergencyPhoneController, label: 'Emergency Phone Number', keyboardType: TextInputType.phone, isRequired: true),
+              ElderFriendlyTextField(
+                controller: _emergencyNameController,
+                label: 'Emergency Person\'s Name',
+                isRequired: true,
+              ),
+              ElderFriendlyTextField(
+                controller: _emergencyPhoneController,
+                label: 'Emergency Phone Number',
+                keyboardType: TextInputType.phone,
+                isRequired: true,
+              ),
               const SizedBox(height: 30),
 
               _buildSectionTitle('Your Interests & Abilities', Colors.blue),
-              ElderFriendlyTextField(controller: _hobbiesController, label: 'What are your hobbies?', maxLines: 3),
-              ElderFriendlyTextField(controller: _skillsController, label: 'Do you have any practical skills?', maxLines: 3),
-              ElderFriendlyTextField(controller: _interestsController, label: 'What topics interest you most?', maxLines: 3),
+              ElderFriendlyTextField(
+                controller: _hobbiesController,
+                label: 'What are your hobbies?',
+                maxLines: 3,
+              ),
+              ElderFriendlyTextField(
+                controller: _skillsController,
+                label: 'Do you have any practical skills?',
+                maxLines: 3,
+              ),
+              ElderFriendlyTextField(
+                controller: _interestsController,
+                label: 'What topics interest you most?',
+                maxLines: 3,
+              ),
               const SizedBox(height: 30),
 
               SizedBox(
@@ -144,14 +257,23 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : ElevatedButton(
-                  onPressed: _saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade700,
-                    padding: const EdgeInsets.symmetric(vertical: 15.0),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                  child: const Text('SAVE AND CONTINUE', style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
+                        onPressed: _saveProfile,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade700,
+                          padding: const EdgeInsets.symmetric(vertical: 15.0),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                        ),
+                        child: const Text(
+                          'SAVE AND CONTINUE',
+                          style: TextStyle(
+                            fontSize: 28,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
               ),
               const SizedBox(height: 40),
             ],
@@ -165,7 +287,14 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: color)),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
+            color: color,
+          ),
+        ),
         Divider(thickness: 3, color: color),
       ],
     );
@@ -196,7 +325,14 @@ class ElderFriendlyTextField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$label${isRequired ? " *" : ""}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87)),
+          Text(
+            '$label${isRequired ? " *" : ""}',
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
           const SizedBox(height: 8.0),
           TextFormField(
             controller: controller,
@@ -205,7 +341,10 @@ class ElderFriendlyTextField extends StatelessWidget {
             style: const TextStyle(fontSize: 28, color: Colors.black),
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.all(20.0),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(width: 2.0, color: Colors.teal)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(width: 2.0, color: Colors.teal),
+              ),
               filled: true,
               fillColor: Colors.grey.shade50,
             ),

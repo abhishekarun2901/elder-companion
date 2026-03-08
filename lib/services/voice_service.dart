@@ -1,4 +1,3 @@
-
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter/foundation.dart';
 
@@ -13,7 +12,7 @@ class VoiceService {
 
   late stt.SpeechToText _speech;
   bool _isInitialized = false;
-  
+
   // Use ValueNotifier to broadcast state changes
   final ValueNotifier<bool> isListeningNotifier = ValueNotifier(false);
 
@@ -44,9 +43,7 @@ class VoiceService {
     return _isInitialized;
   }
 
-  void startListening({
-    required Function(String) onResult,
-  }) async {
+  void startListening({required Function(String) onResult}) async {
     if (!_isInitialized) {
       bool success = await initialize();
       if (!success) {
@@ -60,7 +57,7 @@ class VoiceService {
       _speech.listen(
         onResult: (val) {
           if (val.hasConfidenceRating && val.confidence > 0) {
-              onResult(val.recognizedWords);
+            onResult(val.recognizedWords);
           }
         },
         localeId: "en_US",

@@ -58,11 +58,7 @@ class HealthVitalsScreen extends StatefulWidget {
   final String elderName;
   final String? elderId; // ID of the elder (if being viewed by caregiver)
 
-  const HealthVitalsScreen({
-    super.key,
-    required this.elderName,
-    this.elderId,
-  });
+  const HealthVitalsScreen({super.key, required this.elderName, this.elderId});
 
   @override
   State<HealthVitalsScreen> createState() => _HealthVitalsScreenState();
@@ -78,7 +74,7 @@ class _HealthVitalsScreenState extends State<HealthVitalsScreen> {
     super.initState();
     _vitalsFuture = _fetchLatestVitals();
   }
-  
+
   String get _targetUserId {
     // If elderId is provided, use it. Otherwise use current user's ID.
     return widget.elderId ?? _auth.currentUser?.uid ?? '';
@@ -96,7 +92,7 @@ class _HealthVitalsScreenState extends State<HealthVitalsScreen> {
       'Blood Pressure',
       'Blood Oxygen',
       'Blood Glucose',
-      'Steps Count'
+      'Steps Count',
     ];
 
     final List<Future<QuerySnapshot>> futures = [];
@@ -190,9 +186,7 @@ class _HealthVitalsScreenState extends State<HealthVitalsScreen> {
                 }
 
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Text('No history available'),
-                  );
+                  return const Center(child: Text('No history available'));
                 }
 
                 final docs = snapshot.data!.docs;
@@ -200,7 +194,8 @@ class _HealthVitalsScreenState extends State<HealthVitalsScreen> {
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     final data = docs[index].data() as Map<String, dynamic>;
-                    final timestamp = (data['timestamp'] as Timestamp?)?.toDate();
+                    final timestamp = (data['timestamp'] as Timestamp?)
+                        ?.toDate();
                     final formattedTime = timestamp != null
                         ? '${timestamp.day}/${timestamp.month}/${timestamp.year} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}'
                         : 'Unknown';
@@ -211,7 +206,9 @@ class _HealthVitalsScreenState extends State<HealthVitalsScreen> {
                       trailing: Text(
                         data['status'] ?? 'Normal',
                         style: TextStyle(
-                          color: Vital._getColorForStatus(data['status'] ?? 'Normal'),
+                          color: Vital._getColorForStatus(
+                            data['status'] ?? 'Normal',
+                          ),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -454,7 +451,10 @@ class VitalCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: vital.color.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(6),
@@ -519,7 +519,9 @@ class VitalCard extends StatelessWidget {
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Delete Record?'),
-          content: Text('Are you sure you want to delete this ${vital.title} record?'),
+          content: Text(
+            'Are you sure you want to delete this ${vital.title} record?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),

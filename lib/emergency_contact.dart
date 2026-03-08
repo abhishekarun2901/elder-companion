@@ -69,27 +69,24 @@ class _EmergencyContactScreenState extends State<EmergencyContactScreen> {
           .orderBy('createdAt', descending: true)
           .snapshots()
           .map((snapshot) {
-        // Sort in memory by isPrimary first, then by createdAt
-        final docs = snapshot.docs
-            .map((doc) => EmergencyContact.fromFirestore(doc))
-            .toList();
-        docs.sort((a, b) {
-          // Primary contacts first
-          if (a.isPrimary && !b.isPrimary) return -1;
-          if (!a.isPrimary && b.isPrimary) return 1;
-          // Then by creation date (newest first)
-          return b.createdAt.compareTo(a.createdAt);
-        });
-        return docs;
-      });
+            // Sort in memory by isPrimary first, then by createdAt
+            final docs = snapshot.docs
+                .map((doc) => EmergencyContact.fromFirestore(doc))
+                .toList();
+            docs.sort((a, b) {
+              // Primary contacts first
+              if (a.isPrimary && !b.isPrimary) return -1;
+              if (!a.isPrimary && b.isPrimary) return 1;
+              // Then by creation date (newest first)
+              return b.createdAt.compareTo(a.createdAt);
+            });
+            return docs;
+          });
     }
   }
 
   Future<void> _makeCall(String phoneNumber) async {
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: phoneNumber,
-    );
+    final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
     try {
       await launchUrl(launchUri);
     } catch (e) {
@@ -115,7 +112,10 @@ class _EmergencyContactScreenState extends State<EmergencyContactScreen> {
     }
   }
 
-  Future<void> _saveContact(EmergencyContact contact, {bool isEdit = false}) async {
+  Future<void> _saveContact(
+    EmergencyContact contact, {
+    bool isEdit = false,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -126,10 +126,7 @@ class _EmergencyContactScreenState extends State<EmergencyContactScreen> {
             .doc(user.uid)
             .collection('emergency_contacts')
             .doc(contact.id)
-            .update({
-          'name': contact.name,
-          'phoneNumber': contact.phoneNumber,
-        });
+            .update({'name': contact.name, 'phoneNumber': contact.phoneNumber});
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Contact updated successfully'),
@@ -272,10 +269,7 @@ class _EmergencyContactScreenState extends State<EmergencyContactScreen> {
                   const SizedBox(height: 20),
                   Text(
                     'No emergency contacts added yet',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 30),
                   ElevatedButton.icon(
@@ -355,7 +349,9 @@ class EmergencyContactCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border(
             left: BorderSide(
-              color: contact.isPrimary ? Colors.red.shade700 : Colors.grey.shade300,
+              color: contact.isPrimary
+                  ? Colors.red.shade700
+                  : Colors.grey.shade300,
               width: contact.isPrimary ? 5 : 2,
             ),
           ),
@@ -416,11 +412,7 @@ class EmergencyContactCard extends StatelessWidget {
                   ),
                   IconButton(
                     onPressed: onCall,
-                    icon: const Icon(
-                      Icons.call,
-                      color: Colors.green,
-                      size: 28,
-                    ),
+                    icon: const Icon(Icons.call, color: Colors.green, size: 28),
                     tooltip: 'Call',
                   ),
                 ],
@@ -433,9 +425,7 @@ class EmergencyContactCard extends StatelessWidget {
                     onPressed: onEdit,
                     icon: const Icon(Icons.edit, size: 18),
                     label: const Text('Edit'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.blue,
-                    ),
+                    style: TextButton.styleFrom(foregroundColor: Colors.blue),
                   ),
                   const SizedBox(width: 8),
                   if (!contact.isPrimary)
@@ -461,9 +451,7 @@ class EmergencyContactCard extends StatelessWidget {
                     onPressed: () => _showDeleteConfirmation(context, onDelete),
                     icon: const Icon(Icons.delete, size: 18),
                     label: const Text('Delete'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.red,
-                    ),
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
                   ),
                 ],
               ),
@@ -480,9 +468,7 @@ class EmergencyContactCard extends StatelessWidget {
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Delete Contact?'),
-          content: Text(
-            'Are you sure you want to delete ${contact.name}?',
-          ),
+          content: Text('Are you sure you want to delete ${contact.name}?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -521,9 +507,7 @@ class _AddEditContactScreenState extends State<AddEditContactScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(
-      text: widget.contact?.name ?? '',
-    );
+    _nameController = TextEditingController(text: widget.contact?.name ?? '');
     _phoneController = TextEditingController(
       text: widget.contact?.phoneNumber ?? '',
     );
@@ -561,10 +545,7 @@ class _AddEditContactScreenState extends State<AddEditContactScreen> {
             children: [
               const Text(
                 'Contact Name',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               TextFormField(
@@ -592,10 +573,7 @@ class _AddEditContactScreenState extends State<AddEditContactScreen> {
               const SizedBox(height: 20),
               const Text(
                 'Phone Number',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               TextFormField(

@@ -39,11 +39,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         // If the connection is waiting, show a loading indicator.
-        if (snapshot.connectionState == ConnectionState.waiting || _isLoadingRole) {
+        if (snapshot.connectionState == ConnectionState.waiting ||
+            _isLoadingRole) {
           return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
 
@@ -53,21 +52,21 @@ class _AuthWrapperState extends State<AuthWrapper> {
           if (_userRole == 'caregiver') {
             return const CaregiverDashboard();
           } else {
-             // Default to Elder flow if role is elder or null/unknown
+            // Default to Elder flow if role is elder or null/unknown
             return const ProfileCheckWrapper();
           }
         } else {
           // User is not signed in
-          // crucial: If we are here, we might want to guide them back to role selection 
+          // crucial: If we are here, we might want to guide them back to role selection
           // OR if they just logged out, show the login screen appropriate for their LAST selection?
           // For now, let's just show RoleSelectionScreen if they are fully logged out/initial state
           // BUT, AuthWrapper is usually called AFTER role selection in simple flows.
           // Let's stick to showing the Login Screen if we know the role, or Role Selection if we don't?
           // Actually, if they are not signed in, main.dart shows RoleSelectionScreen as 'home'.
           // This AuthWrapper is only used IF we navigated to it.
-          // But wait, main.dart uses RoleSelectionScreen as home. 
+          // But wait, main.dart uses RoleSelectionScreen as home.
           // RoleSelectionScreen pushes AuthWrapper (for Elder) or PhoneLogin (for Caregiver).
-          
+
           // If we are here, it means we navigated to AuthWrapper but user is not logged in.
           // We should show the PhoneLoginScreen (which is what Elder flow expects here).
           return const PhoneLoginScreen();

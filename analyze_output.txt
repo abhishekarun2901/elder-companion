@@ -1,0 +1,24 @@
+Analyzing mitra_new...                                          
+
+warning - Unused import: 'package:intl/intl.dart' - lib\add_medicine_screen.dart:4:8 - unused_import
+warning - Unused import: 'main.dart' - lib\auth_wrapper.dart:8:8 - unused_import
+warning - Unused import: 'alerts_screen.dart' - lib\caregiver_dashboard.dart:8:8 - unused_import
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\caregiver_dashboard.dart:203:26 - deprecated_member_use
+warning - The declaration '_storeConversationMemory' isn't referenced - lib\chat_screen.dart:343:20 - unused_element
+   info - 'cancelOnError' is deprecated and shouldn't be used. Use SpeechListenOptions.cancelOnError instead - lib\chat_screen.dart:587:11 - deprecated_member_use
+   info - 'listenMode' is deprecated and shouldn't be used. Use SpeechListenOptions.listenMode instead - lib\chat_screen.dart:588:11 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\health_vitals_screen.dart:411:40 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\health_vitals_screen.dart:438:46 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\health_vitals_screen.dart:446:46 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\health_vitals_screen.dart:459:42 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\health_vitals_screen.dart:465:44 - deprecated_member_use
+warning - Unused import: 'auth_wrapper.dart' - lib\main.dart:5:8 - unused_import
+warning - Unused import: 'caregiver_dashboard.dart' - lib\main.dart:6:8 - unused_import
+warning - A value for optional parameter 'isFlipped' isn't ever given - lib\memory_game.dart:163:42 - unused_element_parameter
+warning - A value for optional parameter 'isMatched' isn't ever given - lib\memory_game.dart:163:66 - unused_element_parameter
+   info - 'desiredAccuracy' is deprecated and shouldn't be used. use settings parameter with AndroidSettings, AppleSettings, WebSettings, or LocationSettings - lib\services\location_service.dart:33:9 - deprecated_member_use
+   info - 'partialResults' is deprecated and shouldn't be used. Use SpeechListenOptions.partialResults instead - lib\services\voice_service.dart:69:9 - deprecated_member_use
+   info - 'cancelOnError' is deprecated and shouldn't be used. Use SpeechListenOptions.cancelOnError instead - lib\services\voice_service.dart:70:9 - deprecated_member_use
+   info - 'listenMode' is deprecated and shouldn't be used. Use SpeechListenOptions.listenMode instead - lib\services\voice_service.dart:71:9 - deprecated_member_use
+  error - The name 'MyApp' isn't a class - test\widget_test.dart:16:35 - creation_with_non_type
+

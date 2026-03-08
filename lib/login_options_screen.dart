@@ -10,7 +10,9 @@ class LoginOptionsScreen extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PhoneLoginScreen(isLogin: isSignup == false), // isSignup is true for create account
+        builder: (context) => PhoneLoginScreen(
+          isLogin: isSignup == false,
+        ), // isSignup is true for create account
       ),
     );
   }
@@ -35,16 +37,22 @@ class LoginOptionsScreen extends StatelessWidget {
                 backgroundColor: Colors.teal,
               ),
               onPressed: () => _navigateToLogin(context, false), // Login
-              child: const Text("Login (Existing Account)", style: TextStyle(fontSize: 20, color: Colors.white)),
+              child: const Text(
+                "Login (Existing Account)",
+                style: TextStyle(fontSize: 20, color: Colors.white),
+              ),
             ),
             const SizedBox(height: 20),
             OutlinedButton(
-               style: OutlinedButton.styleFrom(
+              style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 60),
                 side: const BorderSide(color: Colors.teal, width: 2),
               ),
               onPressed: () => _navigateToLogin(context, true), // Signup
-              child: const Text("Create New Account", style: TextStyle(fontSize: 20, color: Colors.teal)),
+              child: const Text(
+                "Create New Account",
+                style: TextStyle(fontSize: 20, color: Colors.teal),
+              ),
             ),
           ],
         ),

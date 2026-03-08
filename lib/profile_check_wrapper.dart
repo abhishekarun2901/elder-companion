@@ -20,7 +20,10 @@ class ProfileCheckWrapper extends StatelessWidget {
 
     return FutureBuilder<DocumentSnapshot>(
       // Check if a document with the user's UID exists in the 'users' collection
-      future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+      future: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get(),
       builder: (context, snapshot) {
         // 1. While waiting for the data, show a loading indicator
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -31,14 +34,15 @@ class ProfileCheckWrapper extends StatelessWidget {
 
         // 2. If there's an error
         if (snapshot.hasError) {
-          return Scaffold(body: Center(child: Text("Error: ${snapshot.error}")));
+          return Scaffold(
+            body: Center(child: Text("Error: ${snapshot.error}")),
+          );
         }
 
         // 3. If the document exists, the user has a profile -> Go to HomeScreen
         if (snapshot.hasData && snapshot.data!.exists) {
           return const HomeScreen();
         }
-
         // 4. If the document does NOT exist, the user is new -> Go to ProfileDetailsScreen
         else {
           return const ProfileDetailsScreen();

@@ -100,7 +100,9 @@ class AlertsScreen extends StatelessWidget {
               onTap: () {
                 // Future action: navigate to the related feature (e.g., Medication screen)
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Checking details for: ${alert.title}')),
+                  SnackBar(
+                    content: Text('Checking details for: ${alert.title}'),
+                  ),
                 );
               },
             ),

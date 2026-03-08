@@ -43,7 +43,9 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
       return;
     }
 
-    setState(() { _isLoading = true; });
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
       final firestore = FirebaseFirestore.instance;
@@ -52,7 +54,11 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
 
       // Add Heart Rate
       if (_heartRateController.text.isNotEmpty) {
-        final docRef = firestore.collection('users').doc(user.uid).collection('health_vitals').doc();
+        final docRef = firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_vitals')
+            .doc();
         batch.set(docRef, {
           'title': 'Heart Rate',
           'value': _heartRateController.text,
@@ -62,11 +68,17 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
       }
 
       // Add Blood Pressure
-      if (_systolicBPController.text.isNotEmpty && _diastolicBPController.text.isNotEmpty) {
-        final docRef = firestore.collection('users').doc(user.uid).collection('health_vitals').doc();
+      if (_systolicBPController.text.isNotEmpty &&
+          _diastolicBPController.text.isNotEmpty) {
+        final docRef = firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_vitals')
+            .doc();
         batch.set(docRef, {
           'title': 'Blood Pressure',
-          'value': '${_systolicBPController.text}/${_diastolicBPController.text}',
+          'value':
+              '${_systolicBPController.text}/${_diastolicBPController.text}',
           'unit': 'mmHg',
           'timestamp': timestamp,
         });
@@ -74,7 +86,11 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
 
       // Add Blood Oxygen
       if (_bloodOxygenController.text.isNotEmpty) {
-        final docRef = firestore.collection('users').doc(user.uid).collection('health_vitals').doc();
+        final docRef = firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_vitals')
+            .doc();
         batch.set(docRef, {
           'title': 'Blood Oxygen',
           'value': _bloodOxygenController.text,
@@ -85,7 +101,11 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
 
       // Add Blood Glucose
       if (_bloodGlucoseController.text.isNotEmpty) {
-        final docRef = firestore.collection('users').doc(user.uid).collection('health_vitals').doc();
+        final docRef = firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_vitals')
+            .doc();
         batch.set(docRef, {
           'title': 'Blood Glucose',
           'value': _bloodGlucoseController.text,
@@ -96,7 +116,11 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
 
       // Add Steps Count
       if (_stepsController.text.isNotEmpty) {
-        final docRef = firestore.collection('users').doc(user.uid).collection('health_vitals').doc();
+        final docRef = firestore
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_vitals')
+            .doc();
         batch.set(docRef, {
           'title': 'Steps Count',
           'value': _stepsController.text,
@@ -108,16 +132,23 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
       await batch.commit();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vitals saved successfully!'), backgroundColor: Colors.green),
+        const SnackBar(
+          content: Text('Vitals saved successfully!'),
+          backgroundColor: Colors.green,
+        ),
       );
       Navigator.pop(context);
-
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save vitals: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Failed to save vitals: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
-      setState(() { _isLoading = false; });
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -134,19 +165,21 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
         child: Column(
           children: [
             _buildTextField(
-                controller: _heartRateController,
-                label: 'Heart Rate',
-                hint: 'e.g., 72',
-                icon: Icons.favorite),
+              controller: _heartRateController,
+              label: 'Heart Rate',
+              hint: 'e.g., 72',
+              icon: Icons.favorite,
+            ),
             const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
                   child: _buildTextField(
-                      controller: _systolicBPController,
-                      label: 'Systolic BP',
-                      hint: 'e.g., 120',
-                      icon: Icons.compress),
+                    controller: _systolicBPController,
+                    label: 'Systolic BP',
+                    hint: 'e.g., 120',
+                    icon: Icons.compress,
+                  ),
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8.0),
@@ -154,57 +187,65 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
                 ),
                 Expanded(
                   child: _buildTextField(
-                      controller: _diastolicBPController,
-                      label: 'Diastolic BP',
-                      hint: 'e.g., 80',
-                      icon: null), // No icon for the second part
+                    controller: _diastolicBPController,
+                    label: 'Diastolic BP',
+                    hint: 'e.g., 80',
+                    icon: null,
+                  ), // No icon for the second part
                 ),
               ],
             ),
             const SizedBox(height: 16),
             _buildTextField(
-                controller: _bloodOxygenController,
-                label: 'Blood Oxygen (SpO2)',
-                hint: 'e.g., 98',
-                icon: Icons.opacity),
+              controller: _bloodOxygenController,
+              label: 'Blood Oxygen (SpO2)',
+              hint: 'e.g., 98',
+              icon: Icons.opacity,
+            ),
             const SizedBox(height: 16),
             _buildTextField(
-                controller: _bloodGlucoseController,
-                label: 'Blood Glucose',
-                hint: 'e.g., 110',
-                icon: Icons.water_drop),
+              controller: _bloodGlucoseController,
+              label: 'Blood Glucose',
+              hint: 'e.g., 110',
+              icon: Icons.water_drop,
+            ),
             const SizedBox(height: 16),
             _buildTextField(
-                controller: _stepsController,
-                label: 'Steps Today',
-                hint: 'e.g., 3500',
-                icon: Icons.directions_walk),
+              controller: _stepsController,
+              label: 'Steps Today',
+              hint: 'e.g., 3500',
+              icon: Icons.directions_walk,
+            ),
             const SizedBox(height: 30),
             _isLoading
                 ? const CircularProgressIndicator()
                 : ElevatedButton.icon(
-              onPressed: _saveVitals,
-              icon: const Icon(Icons.save, color: Colors.white),
-              label: const Text('Save Vitals', style: TextStyle(fontSize: 18, color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal.shade600,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
+                    onPressed: _saveVitals,
+                    icon: const Icon(Icons.save, color: Colors.white),
+                    label: const Text(
+                      'Save Vitals',
+                      style: TextStyle(fontSize: 18, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal.shade600,
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTextField(
-      {required TextEditingController controller,
-        required String label,
-        required String hint,
-        IconData? icon}) {
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    IconData? icon,
+  }) {
     return TextFormField(
       controller: controller,
       keyboardType: TextInputType.number,
@@ -212,9 +253,7 @@ class _LogVitalsScreenState extends State<LogVitalsScreen> {
         labelText: label,
         hintText: hint,
         prefixIcon: icon != null ? Icon(icon, color: Colors.teal) : null,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.teal, width: 2),

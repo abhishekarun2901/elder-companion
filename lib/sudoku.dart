@@ -18,7 +18,9 @@ class _SudokuGameScreen extends State<SudokuGameScreen> {
   void initState() {
     super.initState();
     _game = SudokuGame();
-    _game.generatePuzzle(difficulty: 40); // 40 cells removed = medium difficulty
+    _game.generatePuzzle(
+      difficulty: 40,
+    ); // 40 cells removed = medium difficulty
   }
 
   void _selectCell(int row, int col) {
@@ -206,7 +208,10 @@ class _SudokuGameScreen extends State<SudokuGameScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
                   ),
                 ),
                 ElevatedButton.icon(
@@ -216,7 +221,10 @@ class _SudokuGameScreen extends State<SudokuGameScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
                   ),
                 ),
               ],
@@ -279,11 +287,15 @@ class _SudokuGameScreen extends State<SudokuGameScreen> {
         final isSelected = _selectedRow == row && _selectedCol == col;
         final isInSameRow = _selectedRow == row;
         final isInSameCol = _selectedCol == col;
-        final isInSameBox = _selectedRow != null && _selectedCol != null &&
-            (row ~/ 3 == _selectedRow! ~/ 3) && (col ~/ 3 == _selectedCol! ~/ 3);
+        final isInSameBox =
+            _selectedRow != null &&
+            _selectedCol != null &&
+            (row ~/ 3 == _selectedRow! ~/ 3) &&
+            (col ~/ 3 == _selectedCol! ~/ 3);
 
         // Check if this cell has an error
-        final hasError = _showErrors && value != 0 && value != _game.solution[row][col];
+        final hasError =
+            _showErrors && value != 0 && value != _game.solution[row][col];
 
         return GestureDetector(
           onTap: () => _selectCell(row, col),
@@ -306,11 +318,15 @@ class _SudokuGameScreen extends State<SudokuGameScreen> {
                   width: col % 3 == 0 ? 2 : 0.5,
                 ),
                 right: BorderSide(
-                  color: col == 8 || (col + 1) % 3 == 0 ? Colors.black : Colors.grey.shade400,
+                  color: col == 8 || (col + 1) % 3 == 0
+                      ? Colors.black
+                      : Colors.grey.shade400,
                   width: col == 8 || (col + 1) % 3 == 0 ? 2 : 0.5,
                 ),
                 bottom: BorderSide(
-                  color: row == 8 || (row + 1) % 3 == 0 ? Colors.black : Colors.grey.shade400,
+                  color: row == 8 || (row + 1) % 3 == 0
+                      ? Colors.black
+                      : Colors.grey.shade400,
                   width: row == 8 || (row + 1) % 3 == 0 ? 2 : 0.5,
                 ),
               ),
@@ -318,17 +334,19 @@ class _SudokuGameScreen extends State<SudokuGameScreen> {
             child: Center(
               child: value != 0
                   ? Text(
-                '$value',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: isFixed ? FontWeight.bold : FontWeight.normal,
-                  color: isFixed
-                      ? Colors.black
-                      : hasError
-                      ? Colors.red
-                      : Colors.teal.shade700,
-                ),
-              )
+                      '$value',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: isFixed
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isFixed
+                            ? Colors.black
+                            : hasError
+                            ? Colors.red
+                            : Colors.teal.shade700,
+                      ),
+                    )
                   : null,
             ),
           ),

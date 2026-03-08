@@ -21,7 +21,9 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     final String phoneNumber = '+91${_phoneController.text.trim()}';
     if (phoneNumber.length != 13) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid 10-digit phone number.')),
+        const SnackBar(
+          content: Text('Please enter a valid 10-digit phone number.'),
+        ),
       );
       return;
     }
@@ -48,9 +50,9 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
         print("Error Code: ${e.code}");
         print("Error Message: ${e.message}");
         print("---------------------------------------------");
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.message}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: ${e.message}')));
       },
       codeSent: (String verificationId, int? resendToken) {
         setState(() {
@@ -96,7 +98,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
               else
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
                   ),
                   onPressed: _sendOtp,
                   child: const Text('Send OTP'),
@@ -108,4 +113,3 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     );
   }
 }
-

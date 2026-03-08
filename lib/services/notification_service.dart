@@ -1,4 +1,3 @@
-
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -20,7 +19,7 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
-  
+
   final FlutterTts flutterTts = FlutterTts();
 
   Future<void> init() async {
@@ -31,7 +30,7 @@ class NotificationService {
     } catch (e) {
       debugPrint("Could not get local timezone: $e");
       // Fallback to UTC or a default if needed, or just let it use UTC default
-      tz.setLocalLocation(tz.getLocation('UTC')); 
+      tz.setLocalLocation(tz.getLocation('UTC'));
     }
 
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -39,15 +38,16 @@ class NotificationService {
 
     final DarwinInitializationSettings initializationSettingsIOS =
         DarwinInitializationSettings(
-      requestSoundPermission: true,
-      requestBadgePermission: true,
-      requestAlertPermission: true,
-    );
+          requestSoundPermission: true,
+          requestBadgePermission: true,
+          requestAlertPermission: true,
+        );
 
-    final InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsIOS,
-    );
+    final InitializationSettings initializationSettings =
+        InitializationSettings(
+          android: initializationSettingsAndroid,
+          iOS: initializationSettingsIOS,
+        );
 
     await flutterLocalNotificationsPlugin.initialize(
       settings: initializationSettings,
@@ -62,17 +62,15 @@ class NotificationService {
     // Request Permissions
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
-    
+
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(
-          alert: true, 
-          badge: true, 
-          sound: true,
-        );
+          IOSFlutterLocalNotificationsPlugin
+        >()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
   Future<void> scheduleNotification({
@@ -103,31 +101,31 @@ class NotificationService {
       matchDateTimeComponents: matchDateTimeComponents,
       payload: "$title. $body", // Payload is what is spoken
     );
-     debugPrint("Scheduled notification for $scheduledTime");
+    debugPrint("Scheduled notification for $scheduledTime");
 
-     // Fallback for Web or Foreground simple handling
+    // Fallback for Web or Foreground simple handling
     if (kIsWeb) {
       final now = DateTime.now();
       var difference = scheduledTime.difference(now);
-      
+
       // If time has passed today, assume it's for tomorrow if daily, else return
       if (difference.isNegative) {
-          if (matchDateTimeComponents == DateTimeComponents.time) {
-             difference += const Duration(days: 1);
-          } else {
-             return;
-          }
+        if (matchDateTimeComponents == DateTimeComponents.time) {
+          difference += const Duration(days: 1);
+        } else {
+          return;
+        }
       }
 
       Timer(difference, () {
         _speak("$title. $body");
         _showNotificationDialog(title, body);
-        
+
         // If daily, schedule next one (simple recursion/periodic simulation)
         if (matchDateTimeComponents == DateTimeComponents.time) {
-            // Ideally we'd set a periodic timer, but for now just one-off for the next day 
-            // is tricky without keeping state. Detailed web recurrence is complex.
-            // We will leave it as one-time for this simple fallback or user refreshes.
+          // Ideally we'd set a periodic timer, but for now just one-off for the next day
+          // is tricky without keeping state. Detailed web recurrence is complex.
+          // We will leave it as one-time for this simple fallback or user refreshes.
         }
       });
     }
@@ -138,30 +136,33 @@ class NotificationService {
   }
 
   Future<void> showInstantNotification({
-      required int id,
-      required String title,
-      required String body
+    required int id,
+    required String title,
+    required String body,
   }) async {
-      const AndroidNotificationDetails androidNotificationDetails =
-      AndroidNotificationDetails('instant_channel', 'Instant Notifications',
+    const AndroidNotificationDetails androidNotificationDetails =
+        AndroidNotificationDetails(
+          'instant_channel',
+          'Instant Notifications',
           channelDescription: 'Instant alerts',
           importance: Importance.max,
           priority: Priority.high,
-          ticker: 'ticker');
-      const NotificationDetails notificationDetails =
-      NotificationDetails(android: androidNotificationDetails);
-      await flutterLocalNotificationsPlugin.show(
-          id: id, 
-          title: title, 
-          body: body, 
-          notificationDetails: notificationDetails,
-          payload: "$title. $body"
-      );
-      _speak("$title. $body");
-      // Show visual dialog
-      _showNotificationDialog(title, body);
+          ticker: 'ticker',
+        );
+    const NotificationDetails notificationDetails = NotificationDetails(
+      android: androidNotificationDetails,
+    );
+    await flutterLocalNotificationsPlugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: notificationDetails,
+      payload: "$title. $body",
+    );
+    _speak("$title. $body");
+    // Show visual dialog
+    _showNotificationDialog(title, body);
   }
-
 
   Future<void> _speak(String text) async {
     await flutterTts.setLanguage("en-US");
@@ -181,8 +182,8 @@ class NotificationService {
         actions: [
           TextButton(
             onPressed: () {
-               flutterTts.stop();
-               Navigator.of(context).pop();
+              flutterTts.stop();
+              Navigator.of(context).pop();
             },
             child: const Text('OK'),
           ),

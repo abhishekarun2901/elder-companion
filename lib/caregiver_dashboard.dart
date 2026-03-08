@@ -3,9 +3,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'medicine_reminder.dart';
 import 'alerts_screen.dart';
 import 'health_vitals_screen.dart';
+import 'appointment_screen.dart';
 
 class CaregiverDashboard extends StatefulWidget {
   const CaregiverDashboard({super.key});
@@ -20,23 +22,29 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
   @override
   Widget build(BuildContext context) {
     if (currentUser == null) {
-       return const Scaffold(body: Center(child: Text("Not logged in")));
+      return const Scaffold(body: Center(child: Text("Not logged in")));
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Caregiver Tools', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24)),
+        title: const Text(
+          'Caregiver Tools',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+          ),
+        ),
         backgroundColor: Colors.blueGrey.shade800,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-            IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: () async {
-                    await FirebaseAuth.instance.signOut();
-                    // Identify how to navigate back typically, currently main's home is RoleSelection
-                     Navigator.of(context).popUntil((route) => route.isFirst);
-                },
-            )
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            },
+          ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -50,7 +58,7 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
           }
 
           if (snapshot.hasError) {
-             return Center(child: Text("Error: ${snapshot.error}"));
+            return Center(child: Text("Error: ${snapshot.error}"));
           }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -66,31 +74,62 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
             );
           }
 
-          // List of Elders
           final elders = snapshot.data!.docs;
 
           return ListView.builder(
             padding: const EdgeInsets.all(16.0),
             itemCount: elders.length,
             itemBuilder: (context, index) {
-               final elderData = elders[index].data() as Map<String, dynamic>;
-               final String elderName = elderData['name'] ?? 'Unknown Elder';
-               final String elderId = elders[index].id; // The User UID of the elder
+              final elderData = elders[index].data() as Map<String, dynamic>;
+              final String elderName = elderData['name'] ?? 'Unknown Elder';
+              final String elderId = elders[index].id;
+
+               final bool isEmergencyActive = elderData['emergencyState']?['isActive'] == true;
 
                return Card(
-                 color: Colors.teal.shade50,
+                 color: isEmergencyActive ? Colors.red.shade50 : Colors.teal.shade50,
                  margin: const EdgeInsets.only(bottom: 20),
                  child: Padding(
                    padding: const EdgeInsets.all(16.0),
                    child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
                      children: [
+                        if (isEmergencyActive) ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 30),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    "ACTIVE EMERGENCY",
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                                  ),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => _resolveEmergency(elderId),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: Colors.red,
+                                  ),
+                                  child: const Text('Resolve'),
+                                )
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
                         Text(
                           "Managing: $elderName",
                           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
                         ),
                         const Divider(),
-                        _buildElderActions(context, elderName, elderId),
+                        _buildElderActions(context, elderName, elderId, elderData),
                      ],
                    ),
                  ),
@@ -102,47 +141,126 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
     );
   }
 
-  Widget _buildElderActions(BuildContext context, String elderName, String elderId) {
-      return Column(
-        children: [
-            CaregiverFeatureTile(
-            title: 'Health Vitals Status',
-            subtitle: 'View latest vitals for $elderName.',
-            icon: Icons.monitor_heart,
-            color: Colors.redAccent,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => HealthVitalsScreen(
-                    elderName: elderName,
-                    elderId: elderId,
+  Future<void> _resolveEmergency(String elderId) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(elderId).set({
+        'emergencyState': {
+          'isActive': false,
+        }
+      }, SetOptions(merge: true));
+      
+      await FirebaseFirestore.instance.collection('users').doc(elderId).collection('sos_history').add({
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'Resolved by Caregiver',
+        'resolvedBy': currentUser?.phoneNumber,
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Emergency resolved.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to resolve emergency: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildElderActions(
+    BuildContext context,
+    String elderName,
+    String elderId,
+    Map<String, dynamic> elderData,
+  ) {
+    return Column(
+      children: [
+        CaregiverFeatureTile(
+          title: 'Health Vitals Status',
+          subtitle: 'View latest vitals for $elderName.',
+          icon: Icons.monitor_heart,
+          color: Colors.redAccent,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    HealthVitalsScreen(elderName: elderName, elderId: elderId),
+              ),
+            );
+          },
+        ),
+        CaregiverFeatureTile(
+          title: 'Locate Elder',
+          subtitle: 'Check current location of $elderName.',
+          icon: Icons.location_on,
+          color: Colors.green,
+          onTap: () async {
+            final liveLocation =
+                elderData['liveLocation'] as Map<String, dynamic>?;
+            if (liveLocation != null &&
+                liveLocation['latitude'] != null &&
+                liveLocation['longitude'] != null) {
+              final lat = liveLocation['latitude'];
+              final lng = liveLocation['longitude'];
+              final url = Uri.parse('https://maps.google.com/?q=$lat,$lng');
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url);
+              } else {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not open map.')),
+                  );
+                }
+              }
+            } else {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Location not available yet for $elderName.'),
                   ),
-                ),
-              );
-            },
-          ),
-           CaregiverFeatureTile(
-            title: 'Manage Medications',
-            subtitle: 'Check reminders for $elderName.',
-            icon: Icons.edit_calendar,
-            color: Colors.orange,
+                );
+              }
+            }
+          },
+        ),
+        CaregiverFeatureTile(
+          title: 'Manage Medications',
+          subtitle: 'Check reminders for $elderName.',
+          icon: Icons.edit_calendar,
+          color: Colors.orange,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => MedicineReminder(targetElderId: elderId)),
+            );
+          },
+        ),
+        CaregiverFeatureTile(
+            title: 'Manage Appointments',
+            subtitle: 'Add or remove appointments for $elderName.',
+            icon: Icons.calendar_month,
+            color: Colors.deepPurple,
             onTap: () {
-              // Pass elderId if possible to MedicineReminder? 
-              // Currently MedicineReminder uses auth.currentUser. 
-              // To manage *someone else's* meds, we'd need to update MedicineReminder to accept an targetUserID.
-              // For now, we'll just show the screen, but it might show the CAREGIVER'S meds if logic isn't updated.
-              // This requires a refactor of MedicineReminder to support viewing others. 
-              // For this task scope (auth focus), we will leave as is but note functionality.
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const MedicineReminder()));
+              Navigator.push(context, MaterialPageRoute(builder: (context) => AppointmentScreen(targetElderId: elderId)));
+            },
+        ),
+        CaregiverFeatureTile(
+            title: 'SOS History',
+            subtitle: 'View past emergency alerts.',
+            icon: Icons.history,
+            color: Colors.blueGrey,
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => SosHistoryScreen(elderId: elderId)));
             },
           ),
-        ],
-      );
+      ],
+    );
   }
 }
 
-// Reusable custom widget for feature tiles
 class CaregiverFeatureTile extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -175,10 +293,76 @@ class CaregiverFeatureTile extends StatelessWidget {
           ),
           child: Icon(icon, color: color, size: 28),
         ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        subtitle: Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+        ),
+        trailing: const Icon(
+          Icons.arrow_forward_ios,
+          size: 16,
+          color: Colors.grey,
+        ),
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class SosHistoryScreen extends StatelessWidget {
+  final String elderId;
+
+  const SosHistoryScreen({required this.elderId, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('SOS History'),
+        backgroundColor: Colors.blueGrey.shade800,
+        foregroundColor: Colors.white,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(elderId)
+            .collection('sos_history')
+            .orderBy('timestamp', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text('No SOS history found.', style: TextStyle(fontSize: 16, color: Colors.grey)));
+          }
+
+          final logs = snapshot.data!.docs;
+
+          return ListView.builder(
+            itemCount: logs.length,
+            itemBuilder: (context, index) {
+              final log = logs[index].data() as Map<String, dynamic>;
+              final timestamp = log['timestamp'] as Timestamp?;
+              final dateStr = timestamp != null 
+                  ? "${timestamp.toDate().toLocal().toString().split('.')[0]}" 
+                  : "Unknown Time";
+              final status = log['status'] ?? 'Unknown';
+
+              return ListTile(
+                leading: Icon(
+                  status.toString().contains('Resolved') ? Icons.check_circle : Icons.warning,
+                  color: status.toString().contains('Resolved') ? Colors.green : Colors.red,
+                ),
+                title: Text(status),
+                subtitle: Text(dateStr),
+              );
+            },
+          );
+        },
       ),
     );
   }

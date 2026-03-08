@@ -117,9 +117,6 @@ Important rules:
 Be a caring companion — like talking to a close friend.
 """;
 
-
-
-
   @override
   void initState() {
     super.initState();
@@ -179,7 +176,9 @@ Be a caring companion — like talking to a close friend.
         final factsResult = await getKeyFactsCallable.call();
 
         // Get recent memories
-        final getMemoriesCallable = _functions.httpsCallable('getRelevantMemories');
+        final getMemoriesCallable = _functions.httpsCallable(
+          'getRelevantMemories',
+        );
         final memoriesResult = await getMemoriesCallable.call({
           'currentMessage': 'startup',
           'limit': 5,
@@ -188,7 +187,7 @@ Be a caring companion — like talking to a close friend.
         setState(() {
           _persistentMemory = factsResult.data['keyFacts'] ?? {};
           _recentMemories = List<Map<String, dynamic>>.from(
-              memoriesResult.data['memories'] ?? []
+            memoriesResult.data['memories'] ?? [],
           );
           _isLoadingMemory = false;
         });
@@ -218,7 +217,9 @@ Be a caring companion — like talking to a close friend.
     StringBuffer context = StringBuffer();
 
     context.writeln("\n\n### USER PROFILE INFORMATION:");
-    context.writeln("Use this information to personalize your interactions with the user.\n");
+    context.writeln(
+      "Use this information to personalize your interactions with the user.\n",
+    );
 
     // Add profile information
     if (_userProfile != null) {
@@ -259,7 +260,9 @@ Be a caring companion — like talking to a close friend.
       }
     }
 
-    context.writeln("\nUse all this context to provide deeply personalized responses.");
+    context.writeln(
+      "\nUse all this context to provide deeply personalized responses.",
+    );
     return context.toString();
   }
 
@@ -267,164 +270,161 @@ Be a caring companion — like talking to a close friend.
   // STORE CONVERSATION TO MEMORY & KEY FACTS
   // ============================================
   bool _isManglish(String text) {
-  final lower = text.toLowerCase();
+    final lower = text.toLowerCase();
 
-  const manglishKeywords = [
-    'ennu',
-    'ente',
-    'enikku',
-    'njan',
-    'ningal',
-    'anu',
-    'illa',
-    'undo',
-    'sukham',
-    'vishamam',
-    'thonnunnu',
-    'eduthu',
-    'kazhicho',
-    'kazhichu',
-    'urakkam',
-    'marunnu',
-    'vedana',
-  ];
+    const manglishKeywords = [
+      'ennu',
+      'ente',
+      'enikku',
+      'njan',
+      'ningal',
+      'anu',
+      'illa',
+      'undo',
+      'sukham',
+      'vishamam',
+      'thonnunnu',
+      'eduthu',
+      'kazhicho',
+      'kazhichu',
+      'urakkam',
+      'marunnu',
+      'vedana',
+    ];
 
-  return manglishKeywords.any((word) => lower.contains(word));
-}
-
+    return manglishKeywords.any((word) => lower.contains(word));
+  }
 
   String? _detectMood(String message) {
-  final text = message.toLowerCase();
+    final text = message.toLowerCase();
 
-  // English
-  if (text.contains('tired') ||
-      text.contains('exhausted') ||
-      text.contains('weak') ||
-      text.contains('sleepy')) {
-    return 'tired';
+    // English
+    if (text.contains('tired') ||
+        text.contains('exhausted') ||
+        text.contains('weak') ||
+        text.contains('sleepy')) {
+      return 'tired';
+    }
+
+    if (text.contains('sad') ||
+        text.contains('lonely') ||
+        text.contains('low') ||
+        text.contains('depressed')) {
+      return 'sad';
+    }
+
+    if (text.contains('happy') ||
+        text.contains('good') ||
+        text.contains('fine') ||
+        text.contains('great')) {
+      return 'happy';
+    }
+
+    // Malayalam (basic but effective)
+    if (text.contains('തളർച്ച') ||
+        text.contains('ക്ഷീണം') ||
+        text.contains('വേദന')) {
+      return 'tired';
+    }
+
+    if (text.contains('വിഷമം') ||
+        text.contains('ഒറ്റപ്പെടല്') ||
+        text.contains('ദുഖം')) {
+      return 'sad';
+    }
+
+    return null;
   }
 
-  if (text.contains('sad') ||
-      text.contains('lonely') ||
-      text.contains('low') ||
-      text.contains('depressed')) {
-    return 'sad';
-  }
-
-  if (text.contains('happy') ||
-      text.contains('good') ||
-      text.contains('fine') ||
-      text.contains('great')) {
-    return 'happy';
-  }
-
-  // Malayalam (basic but effective)
-  if (text.contains('തളർച്ച') ||
-      text.contains('ക്ഷീണം') ||
-      text.contains('വേദന')) {
-    return 'tired';
-  }
-
-  if (text.contains('വിഷമം') ||
-      text.contains('ഒറ്റപ്പെടല്') ||
-      text.contains('ദുഖം')) {
-    return 'sad';
-  }
-
-  return null;
-}
-
-  Future<void> _storeConversationMemory(String userMessage, String aiResponse) async {
+  Future<void> _storeConversationMemory(
+    String userMessage,
+    String aiResponse,
+  ) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
       final firestore = FirebaseFirestore.instance;
-      Future<void> _storeConversationMemory(String userMessage, String aiResponse) async {
-  try {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+      Future<void> _storeConversationMemory(
+        String userMessage,
+        String aiResponse,
+      ) async {
+        try {
+          final user = FirebaseAuth.instance.currentUser;
+          if (user == null) return;
 
-    final firestore = FirebaseFirestore.instance;
+          final firestore = FirebaseFirestore.instance;
 
-    // ============================
-    // 🧠 NEW: DETECT & STORE MOOD
-    // ============================
-    final String? mood = _detectMood(userMessage);
+          // ============================
+          // 🧠 NEW: DETECT & STORE MOOD
+          // ============================
+          final String? mood = _detectMood(userMessage);
 
-    if (mood != null) {
-      await firestore
-          .collection('users')
-          .doc(user.uid)
-          .set(
-        {
-          'lastMood': mood,
-          'lastMoodAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-    }
+          if (mood != null) {
+            await firestore.collection('users').doc(user.uid).set({
+              'lastMood': mood,
+              'lastMoodAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
 
-    // ============================
-    // EXISTING LOGIC (UNCHANGED)
-    // ============================
+          // ============================
+          // EXISTING LOGIC (UNCHANGED)
+          // ============================
 
-    // Extract key facts from the conversation
-    List<String> keyFacts = _extractKeyFacts(userMessage, aiResponse);
+          // Extract key facts from the conversation
+          List<String> keyFacts = _extractKeyFacts(userMessage, aiResponse);
 
-    // 1. Store the memory entry (Cloud Function)
-    final storeMemoryCallable =
-        _functions.httpsCallable('storeConversationMemory');
-    await storeMemoryCallable.call({
-      'message': userMessage,
-      'response': aiResponse,
-      'keyFacts': keyFacts,
-    });
-
-    // 2. Store individual key facts to Firestore
-    if (keyFacts.isNotEmpty) {
-      final batch = firestore.batch();
-
-      for (String fact in keyFacts) {
-        final parts = fact.split(':');
-        if (parts.length >= 2) {
-          final key = parts[0].trim();
-          final value = parts.sublist(1).join(':').trim();
-
-          final factRef = firestore
-              .collection('users')
-              .doc(user.uid)
-              .collection('key_facts')
-              .doc(key);
-
-          batch.set(
-            factRef,
-            {
-              'value': value,
-              'updatedAt': FieldValue.serverTimestamp(),
-              'factType': key,
-            },
-            SetOptions(merge: true),
+          // 1. Store the memory entry (Cloud Function)
+          final storeMemoryCallable = _functions.httpsCallable(
+            'storeConversationMemory',
           );
+          await storeMemoryCallable.call({
+            'message': userMessage,
+            'response': aiResponse,
+            'keyFacts': keyFacts,
+          });
+
+          // 2. Store individual key facts to Firestore
+          if (keyFacts.isNotEmpty) {
+            final batch = firestore.batch();
+
+            for (String fact in keyFacts) {
+              final parts = fact.split(':');
+              if (parts.length >= 2) {
+                final key = parts[0].trim();
+                final value = parts.sublist(1).join(':').trim();
+
+                final factRef = firestore
+                    .collection('users')
+                    .doc(user.uid)
+                    .collection('key_facts')
+                    .doc(key);
+
+                batch.set(factRef, {
+                  'value': value,
+                  'updatedAt': FieldValue.serverTimestamp(),
+                  'factType': key,
+                }, SetOptions(merge: true));
+              }
+            }
+
+            await batch.commit();
+          }
+
+          // Reload memory for future context
+          await _loadPersistentMemory();
+        } catch (e) {
+          print('Error storing memory: $e');
         }
       }
-
-      await batch.commit();
-    }
-
-    // Reload memory for future context
-    await _loadPersistentMemory();
-  } catch (e) {
-    print('Error storing memory: $e');
-  }
-}
-
 
       // Extract key facts from the conversation
       List<String> keyFacts = _extractKeyFacts(userMessage, aiResponse);
 
       // 1. Store the memory entry
-      final storeMemoryCallable = _functions.httpsCallable('storeConversationMemory');
+      final storeMemoryCallable = _functions.httpsCallable(
+        'storeConversationMemory',
+      );
       await storeMemoryCallable.call({
         'message': userMessage,
         'response': aiResponse,
@@ -449,15 +449,11 @@ Be a caring companion — like talking to a close friend.
                 .collection('key_facts')
                 .doc(key);
 
-            batch.set(
-              factRef,
-              {
-                'value': value,
-                'updatedAt': FieldValue.serverTimestamp(),
-                'factType': key,
-              },
-              SetOptions(merge: true),
-            );
+            batch.set(factRef, {
+              'value': value,
+              'updatedAt': FieldValue.serverTimestamp(),
+              'factType': key,
+            }, SetOptions(merge: true));
           }
         }
 
@@ -507,27 +503,28 @@ Be a caring companion — like talking to a close friend.
   }
 
   Future<void> _initializeTts() async {
-  _flutterTts = FlutterTts();
+    _flutterTts = FlutterTts();
 
-  await _flutterTts.setSpeechRate(0.75);
-  await _flutterTts.setVolume(1.0);
-  await _flutterTts.setPitch(1.0);
+    await _flutterTts.setSpeechRate(0.75);
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setPitch(1.0);
 
-  _flutterTts.setStartHandler(() {
-    setState(() => _isSpeaking = true);
-  });
+    _flutterTts.setStartHandler(() {
+      setState(() => _isSpeaking = true);
+    });
 
-  _flutterTts.setCompletionHandler(() {
-    setState(() => _isSpeaking = false);
-  });
-}
-
+    _flutterTts.setCompletionHandler(() {
+      setState(() => _isSpeaking = false);
+    });
+  }
 
   void _sendInitialMessage() {
-    String greeting = "Hello! I am Mitra, your personal companion. I'm here to chat, remind you of things, and keep you company.";
+    String greeting =
+        "Hello! I am Mitra, your personal companion. I'm here to chat, remind you of things, and keep you company.";
 
     if (_userProfile != null && _userProfile!['name'] != null) {
-      greeting = "Hello ${_userProfile!['name']}! I am Mitra, your personal companion. I'm here to chat, remind you of things, and keep you company.";
+      greeting =
+          "Hello ${_userProfile!['name']}! I am Mitra, your personal companion. I'm here to chat, remind you of things, and keep you company.";
     }
 
     final ChatMessage introMessage = ChatMessage(
@@ -547,21 +544,19 @@ Be a caring companion — like talking to a close friend.
   }
 
   Future<void> _speak(String text) async {
-  if (!_speechEnabled) return;
+    if (!_speechEnabled) return;
 
-  // Detect Malayalam characters
-  final bool isMalayalam =
-      RegExp(r'[\u0D00-\u0D7F]').hasMatch(text);
+    // Detect Malayalam characters
+    final bool isMalayalam = RegExp(r'[\u0D00-\u0D7F]').hasMatch(text);
 
-  if (isMalayalam) {
-    await _flutterTts.setLanguage("ml-IN");
-  } else {
-    await _flutterTts.setLanguage("en-US");
+    if (isMalayalam) {
+      await _flutterTts.setLanguage("ml-IN");
+    } else {
+      await _flutterTts.setLanguage("en-US");
+    }
+
+    await _flutterTts.speak(text);
   }
-
-  await _flutterTts.speak(text);
-}
-
 
   Future<void> _stopSpeaking() async {
     await _flutterTts.stop();
@@ -620,18 +615,16 @@ Be a caring companion — like talking to a close friend.
     try {
       final String completePrompt = _systemPrompt + _buildUserContext();
 
-     final bool isManglish = _isManglish(messageText);
+      final bool isManglish = _isManglish(messageText);
 
-final response = await _model.generateContent([
-  Content.text(completePrompt),
-  Content.text(
-    isManglish
-        ? "User message (Manglish): $messageText\nReply warmly in simple Malayalam or Manglish, like a caring friend."
-        : "User message: $messageText\nReply shortly, warmly, like a caring friend."
-  ),
-]);
-
-
+      final response = await _model.generateContent([
+        Content.text(completePrompt),
+        Content.text(
+          isManglish
+              ? "User message (Manglish): $messageText\nReply warmly in simple Malayalam or Manglish, like a caring friend."
+              : "User message: $messageText\nReply shortly, warmly, like a caring friend.",
+        ),
+      ]);
 
       final aiText = response.text ?? "Warning: No response from Mitra.";
 
@@ -714,69 +707,71 @@ final response = await _model.generateContent([
       body: (_isLoadingProfile || _isLoadingMemory)
           ? const Center(child: CircularProgressIndicator())
           : Column(
-        children: [
-          Expanded(
-            child: DashChat(
-              currentUser: _currentUser,
-              messages: _messages,
-              inputOptions: InputOptions(
-                inputDisabled: true,
-                alwaysShowSend: false,
-                inputDecoration: const InputDecoration.collapsed(
-                  hintText: '',
-                ),
-              ),
-              messageOptions: const MessageOptions(
-                showTime: true,
-              ),
-              onSend: (_) {},
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
               children: [
-                CircleAvatar(
-                  radius: 25,
-                  backgroundColor: _isListening ? Colors.red : Colors.blue,
-                  child: IconButton(
-                    icon: Icon(
-                      _isListening ? Icons.mic : Icons.mic_none,
-                      color: Colors.white,
-                    ),
-                    onPressed: _listen,
-                    tooltip: _isListening ? 'Stop listening' : 'Start voice input',
-                  ),
-                ),
-                const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    textInputAction: TextInputAction.send,
-                    decoration: InputDecoration(
-                      hintText: "Type a message...",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  child: DashChat(
+                    currentUser: _currentUser,
+                    messages: _messages,
+                    inputOptions: InputOptions(
+                      inputDisabled: true,
+                      alwaysShowSend: false,
+                      inputDecoration: const InputDecoration.collapsed(
+                        hintText: '',
                       ),
                     ),
-                    onSubmitted: (_) => _handleSend(),
+                    messageOptions: const MessageOptions(showTime: true),
+                    onSend: (_) {},
                   ),
                 ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  radius: 25,
-                  backgroundColor: Colors.teal,
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: _handleSend,
-                    tooltip: 'Send message',
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 25,
+                        backgroundColor: _isListening
+                            ? Colors.red
+                            : Colors.blue,
+                        child: IconButton(
+                          icon: Icon(
+                            _isListening ? Icons.mic : Icons.mic_none,
+                            color: Colors.white,
+                          ),
+                          onPressed: _listen,
+                          tooltip: _isListening
+                              ? 'Stop listening'
+                              : 'Start voice input',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          textInputAction: TextInputAction.send,
+                          decoration: InputDecoration(
+                            hintText: "Type a message...",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onSubmitted: (_) => _handleSend(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      CircleAvatar(
+                        radius: 25,
+                        backgroundColor: Colors.teal,
+                        child: IconButton(
+                          icon: const Icon(Icons.send, color: Colors.white),
+                          onPressed: _handleSend,
+                          tooltip: 'Send message',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }

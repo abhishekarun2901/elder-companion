@@ -1,6 +1,7 @@
 // functions/index.js
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {onDocumentUpdated} = require("firebase-functions/v2/firestore");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 
@@ -323,5 +324,175 @@ exports.getMemoryAnalytics = onCall(async (request) => {
   } catch (error) {
     console.error("Error generating analytics:", error);
     throw new HttpsError("internal", "Failed to generate analytics");
+  }
+});
+
+// ============================================
+// 10. SEND SOS PUSH NOTIFICATION
+// ============================================
+exports.sendSosNotification = onDocumentUpdated("users/{userId}", async (event) => {
+  const beforeData = event.data.before.data() || {};
+  const afterData = event.data.after.data() || {};
+
+  const wasActive = beforeData.emergencyState ? beforeData.emergencyState.isActive : false;
+  const isActive = afterData.emergencyState ? afterData.emergencyState.isActive : false;
+
+  // Only trigger if emergency state changed to TRUE
+  if (!wasActive && isActive) {
+    const elderName = afterData.name || "An elder";
+    const emergencyContactPhone = afterData.emergencyContact ? afterData.emergencyContact.phone : null;
+
+    if (!emergencyContactPhone) {
+      console.log(`No emergency contact phone set for elder ${event.params.userId}. Skipping push notification.`);
+      return null;
+    }
+
+    try {
+      // Find the caregiver by phone number
+      const caregiversSnapshot = await db.collection("users").where("phoneNumber", "==", emergencyContactPhone).limit(1).get();
+
+      if (caregiversSnapshot.empty) {
+        console.log(`Caregiver with phone ${emergencyContactPhone} not found in database.`);
+        return null;
+      }
+
+      const caregiverData = caregiversSnapshot.docs[0].data();
+      const fcmToken = caregiverData.fcmToken;
+
+      if (!fcmToken) {
+        console.log(`Caregiver ${caregiverData.name || emergencyContactPhone} does not have an FCM token registered.`);
+        return null;
+      }
+
+      // Send the Push Notification
+      const payload = {
+        token: fcmToken,
+        notification: {
+          title: "🚨 ACTIVE EMERGENCY! 🚨",
+          body: `${elderName} has triggered an SOS alert and needs immediate assistance!`,
+        },
+        data: {
+          elderId: event.params.userId,
+          type: "sos_alert",
+          click_action: "FLUTTER_NOTIFICATION_CLICK"
+        },
+        android: {
+          priority: "high",
+          notification: {
+            sound: "default",
+            channelId: "instant_channel"
+          }
+        },
+        apns: {
+          payload: {
+             aps: {
+                sound: "default"
+             }
+          }
+        }
+      };
+
+      const response = await admin.messaging().send(payload);
+      console.log("Successfully sent SOS push notification:", response);
+      return null;
+    } catch (error) {
+      console.error("Error sending SOS push notification:", error);
+      return null;
+    }
+  }
+
+  return null;
+});
+
+// ============================================
+// 11. SCHEDULED APPOINTMENT REMINDERS
+// ============================================
+exports.checkUpcomingAppointments = onSchedule("every 15 minutes", async (event) => {
+  try {
+    const now = new Date();
+    // Look for appointments happening between 45 and 60 minutes from now
+    const next45Mins = new Date(now.getTime() + 45 * 60000);
+    const next60Mins = new Date(now.getTime() + 60 * 60000);
+
+    const snapshot = await db.collection("appointments")
+      .where("dateTime", ">=", next45Mins.toISOString())
+      .where("dateTime", "<=", next60Mins.toISOString())
+      .where("notified", "!=", true)
+      .get();
+
+    if (snapshot.empty) {
+      console.log("No upcoming appointments found in the next hour.");
+      return null;
+    }
+
+    const batch = db.batch();
+    const messaging = admin.messaging();
+    
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const elderId = data.elderId;
+      const doctorName = data.doctorName || "Doctor";
+      const timeString = new Date(data.dateTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+      // Fetch Elder and Caregiver tokens
+      const elderSnapshot = await db.collection("users").doc(elderId).get();
+      if (!elderSnapshot.exists) continue;
+
+      const elderData = elderSnapshot.data();
+      const elderToken = elderData.fcmToken;
+      const elderName = elderData.name || "Elder";
+      const caregiverPhone = elderData.caregiverPhone;
+
+      let caregiverToken = null;
+      if (caregiverPhone) {
+        const cgSnapshot = await db.collection("users").where("phoneNumber", "==", caregiverPhone).limit(1).get();
+        if (!cgSnapshot.empty) {
+          caregiverToken = cgSnapshot.docs[0].data().fcmToken;
+        }
+      }
+
+      // Prepare Notification Payload
+      const payload = {
+        notification: {
+          title: "🗓 Upcoming Appointment!",
+          body: `Reminder: Appointment with ${doctorName} at ${timeString}.`,
+        },
+        android: { priority: "high", notification: { sound: "default" } },
+        apns: { payload: { aps: { sound: "default" } } }
+      };
+
+      // Send to Elder
+      try {
+        if (elderToken) {
+          await messaging.send({ ...payload, token: elderToken });
+          console.log(`Sent to elder ${elderName}`);
+        }
+      } catch (err) {
+        console.error("Elder notification failed:", err);
+      }
+
+      // Send to Caregiver
+      try {
+        if (caregiverToken) {
+          const cgPayload = {...payload};
+          cgPayload.notification.body = `Reminder: ${elderName} has an appointment with ${doctorName} at ${timeString}.`;
+          await messaging.send({ ...cgPayload, token: caregiverToken });
+          console.log(`Sent to caregiver for ${elderName}`);
+        }
+      } catch (err) {
+        console.error("Caregiver notification failed:", err);
+      }
+
+      // Mark as notified in batch
+      batch.update(doc.ref, { notified: true });
+    }
+
+    await batch.commit();
+    console.log("Finished sending appointment reminders.");
+    return null;
+
+  } catch (error) {
+    console.error("Error checking upcoming appointments:", error);
+    return null;
   }
 });

@@ -37,7 +37,8 @@ class BrainGamesScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const MemoryGameScreen(), // make const if possible
+                    builder: (context) =>
+                        const MemoryGameScreen(), // make const if possible
                   ),
                 );
               },
@@ -76,13 +77,13 @@ class BrainGameCard extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
-              Text(
-                description,
-                style: const TextStyle(fontSize: 16),
-              ),
+              Text(description, style: const TextStyle(fontSize: 16)),
             ],
           ),
         ),

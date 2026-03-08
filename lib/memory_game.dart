@@ -23,7 +23,10 @@ class _MemoryGameScreenState extends State<MemoryGameScreen> {
   }
 
   void _initCards() {
-    List<int> numbers = List.generate((_gridSize * _gridSize) ~/ 2, (i) => i + 1);
+    List<int> numbers = List.generate(
+      (_gridSize * _gridSize) ~/ 2,
+      (i) => i + 1,
+    );
     numbers = [...numbers, ...numbers]; // duplicate for pairs
     numbers.shuffle(Random());
 
@@ -116,7 +119,10 @@ class _MemoryGameScreenState extends State<MemoryGameScreen> {
           builder: (context, constraints) {
             double spacing = 6.0;
             // Cap tile size at 60 so grid stays small
-            double tileSize = min((constraints.maxWidth - spacing * (_gridSize - 1)) / _gridSize, 60);
+            double tileSize = min(
+              (constraints.maxWidth - spacing * (_gridSize - 1)) / _gridSize,
+              60,
+            );
 
             return Center(
               child: Wrap(
@@ -130,12 +136,16 @@ class _MemoryGameScreenState extends State<MemoryGameScreen> {
                       width: tileSize,
                       height: tileSize,
                       decoration: BoxDecoration(
-                        color: card.isFlipped || card.isMatched ? Colors.deepPurple : Colors.grey,
+                        color: card.isFlipped || card.isMatched
+                            ? Colors.deepPurple
+                            : Colors.grey,
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Center(
                         child: Text(
-                          card.isFlipped || card.isMatched ? '${card.number}' : '',
+                          card.isFlipped || card.isMatched
+                              ? '${card.number}'
+                              : '',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -160,5 +170,9 @@ class _CardModel {
   bool isFlipped;
   bool isMatched;
 
-  _CardModel({required this.number, this.isFlipped = false, this.isMatched = false});
+  _CardModel({
+    required this.number,
+    this.isFlipped = false,
+    this.isMatched = false,
+  });
 }

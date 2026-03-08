@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 // Import your Home Screen
 
 class OTPScreen extends StatefulWidget {
-  final String verificationId; // Receive verificationId from the previous screen
+  final String
+  verificationId; // Receive verificationId from the previous screen
 
   const OTPScreen({super.key, required this.verificationId});
 
@@ -39,13 +40,17 @@ class _OTPScreenState extends State<OTPScreen> {
       );
 
       // Sign the user in with the credential
-      UserCredential userCredential = await _auth.signInWithCredential(credential);
+      UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
 
       // If sign-in is successful, navigate to the home screen
       if (userCredential.user != null) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const AuthWrapper()), // Correctly route via AuthWrapper
-              (Route<dynamic> route) => false,// This removes all previous routes
+          MaterialPageRoute(
+            builder: (context) => const AuthWrapper(),
+          ), // Correctly route via AuthWrapper
+          (Route<dynamic> route) => false, // This removes all previous routes
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -76,9 +81,9 @@ class _OTPScreenState extends State<OTPScreen> {
             _isLoading
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
-              onPressed: _verifyOtp,
-              child: const Text('Verify OTP'),
-            ),
+                    onPressed: _verifyOtp,
+                    child: const Text('Verify OTP'),
+                  ),
           ],
         ),
       ),
