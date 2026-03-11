@@ -24,6 +24,8 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
   TimeOfDay? _selectedTime;
   String? _editingDocId;
   int? _editingNotificationId;
+  List<int> _selectedDays = [1, 2, 3, 4, 5, 6, 7];
+  final List<String> _weekDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
   final user = FirebaseAuth.instance.currentUser;
 
@@ -72,14 +74,14 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
 
     int notificationId =
         _editingNotificationId ??
-        (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-    notificationId = notificationId & 0x7FFFFFFF;
+        ((DateTime.now().millisecondsSinceEpoch ~/ 1000) % 100000000); // keep it small enough to add +7 without overflow
 
     try {
-      // If editing, cancel the old notification first (to be clean, though overwriting same ID works if ID reused)
-      // Actually if we reuse ID, zonedSchedule overwrites. But let's be safe.
-      if (_editingDocId != null) {
-        await NotificationService().cancelNotification(notificationId);
+      if (_editingDocId != null && _editingNotificationId != null) {
+        for (int i = 1; i <= 7; i++) {
+          await NotificationService().cancelNotification(_editingNotificationId! + i);
+        }
+        await NotificationService().cancelNotification(_editingNotificationId!);
       }
 
       final medicineData = {
@@ -89,6 +91,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
         'time': _selectedTime!.format(context),
         'hour': _selectedTime!.hour,
         'minute': _selectedTime!.minute,
+        'selectedDays': _selectedDays,
         'notes': _notesController.text.trim(),
         'notificationId': notificationId,
         'createdAt': FieldValue.serverTimestamp(),
@@ -105,16 +108,28 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
             .add(medicineData);
       }
 
-      // Schedule Daily Local Notification ALL ONLY if this is the Elder themselves.
-      // Caregivers don't need alarms for the Elder's pills on their own phone.
+      // Schedule notifications for each selected day
       if (widget.targetElderId == null) {
-        await NotificationService().scheduleNotification(
-          id: notificationId,
-          title: "Medicine Time!",
-          body: "Please take ${_nameController.text} (${_dosageController.text})",
-          scheduledTime: scheduledDateTime,
-          matchDateTimeComponents: DateTimeComponents.time, // Daily
-        );
+        for (int day in _selectedDays) {
+          int daysUntil = day - now.weekday;
+          DateTime scheduleForDay = DateTime(
+            now.year, now.month, now.day, _selectedTime!.hour, _selectedTime!.minute
+          );
+
+          if (daysUntil < 0 || (daysUntil == 0 && scheduleForDay.isBefore(now))) {
+            daysUntil += 7; // Next week
+          }
+          
+          scheduleForDay = scheduleForDay.add(Duration(days: daysUntil));
+
+          await NotificationService().scheduleNotification(
+            id: notificationId + day,
+            title: "Medicine Time!",
+            body: "Please take ${_nameController.text} (${_dosageController.text})",
+            scheduledTime: scheduleForDay,
+            matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime, 
+          );
+        }
       }
 
       _resetForm();
@@ -139,6 +154,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
     _notesController.clear();
     setState(() {
       _selectedTime = null;
+      _selectedDays = [1, 2, 3, 4, 5, 6, 7];
       _editingDocId = null;
       _editingNotificationId = null;
     });
@@ -151,6 +167,9 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
         .delete();
     // Only cancel local notification if we are the elder (we scheduled it)
     if (notificationId != null && widget.targetElderId == null) {
+      for (int i = 1; i <= 7; i++) {
+        await NotificationService().cancelNotification(notificationId + i);
+      }
       await NotificationService().cancelNotification(notificationId);
     }
     ScaffoldMessenger.of(
@@ -165,6 +184,12 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       _dosageController.text = data['dosage'];
       _notesController.text = data['notes'] ?? '';
       _editingNotificationId = data['notificationId'];
+
+      if (data['selectedDays'] != null) {
+        _selectedDays = List<int>.from(data['selectedDays']);
+      } else {
+        _selectedDays = [1, 2, 3, 4, 5, 6, 7];
+      }
 
       if (data['hour'] != null && data['minute'] != null) {
         _selectedTime = TimeOfDay(hour: data['hour'], minute: data['minute']);
@@ -214,10 +239,39 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                       onPressed: () => _selectTime(context),
                       child: Text(
                         _selectedTime == null
-                            ? 'Select Time (Daily)'
+                            ? 'Select Time'
                             : 'Time: ${_selectedTime!.format(context)}',
                       ),
                     ),
+                  ),
+
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Select Days:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 4.0,
+                    children: List.generate(7, (index) {
+                      int dayNum = index + 1; // 1 = Monday, 7 = Sunday
+                      return FilterChip(
+                        label: Text(_weekDays[index], style: const TextStyle(fontSize: 12)),
+                        selected: _selectedDays.contains(dayNum),
+                        onSelected: (bool selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedDays.add(dayNum);
+                              _selectedDays.sort();
+                            } else {
+                              if (_selectedDays.length > 1) { // Ensure at least 1 day is selected
+                                _selectedDays.remove(dayNum);
+                              }
+                            }
+                          });
+                        },
+                      );
+                    }),
                   ),
 
                   const SizedBox(height: 10),
@@ -305,7 +359,16 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                             color: Colors.teal,
                           ),
                           title: Text(data['medicineName']),
-                          subtitle: Text('${data['dosage']} • ${data['time']}'),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${data['dosage']} • ${data['time']}'),
+                              Text(
+                                _getDaysString(List<int>.from(data['selectedDays'] ?? [1,2,3,4,5,6,7])),
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
                           trailing: PopupMenuButton<String>(
                             onSelected: (value) {
                               if (value == 'edit') {
@@ -336,5 +399,11 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
         ),
       ),
     );
+  }
+
+  String _getDaysString(List<int> days) {
+    if (days.length == 7) return "Every day";
+    List<String> d = days.map((day) => _weekDays[day-1]).toList();
+    return d.join(', ');
   }
 }

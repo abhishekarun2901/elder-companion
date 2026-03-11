@@ -119,6 +119,9 @@ class _MedicineReminderState extends State<MedicineReminder> {
               final String medName = medData['medicineName'] ?? 'Unknown Medicine';
               final String medTime = medData['time'] ?? '';
               final String medDosage = medData['dosage'] ?? '';
+              final List<int> selectedDays = List<int>.from(medData['selectedDays'] ?? [1,2,3,4,5,6,7]);
+              final int currentWeekday = DateTime.now().weekday;
+              final bool isScheduledToday = selectedDays.contains(currentWeekday);
 
               // Use a nested StreamBuilder to check Adherence for TODAY
               return StreamBuilder<DocumentSnapshot>(
@@ -172,7 +175,13 @@ class _MedicineReminderState extends State<MedicineReminder> {
                             ),
                           ),
                         ),
-                        trailing: isCaregiver 
+                        trailing: !isScheduledToday ? 
+                            Chip(
+                              label: const Text("Not Today", style: TextStyle(color: Colors.white, fontSize: 12)),
+                              backgroundColor: Colors.grey.shade400,
+                              padding: EdgeInsets.zero,
+                            )
+                          : isCaregiver 
                           ? (isTaken 
                               ? const Chip(
                                   label: Text("Taken", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -201,21 +210,19 @@ class _MedicineReminderState extends State<MedicineReminder> {
           );
         },
       ),
-      floatingActionButton: isCaregiver
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AddMedicineScreen(targetElderId: widget.targetElderId),
-                  ),
-                );
-              },
-              backgroundColor: Colors.teal,
-              icon: const Icon(Icons.edit_calendar, color: Colors.white),
-              label: const Text("Manage Meds", style: TextStyle(color: Colors.white)),
-            )
-          : null,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddMedicineScreen(targetElderId: widget.targetElderId),
+            ),
+          );
+        },
+        backgroundColor: Colors.teal,
+        icon: const Icon(Icons.edit_calendar, color: Colors.white),
+        label: const Text("Manage Meds", style: TextStyle(color: Colors.white)),
+      ),
     );
   }
 }

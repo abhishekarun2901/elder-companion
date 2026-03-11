@@ -239,9 +239,9 @@ class _CaregiverDashboardState extends State<CaregiverDashboard> {
           },
         ),
         CaregiverFeatureTile(
-            title: 'Manage Appointments',
-            subtitle: 'Add or remove appointments for $elderName.',
-            icon: Icons.calendar_month,
+            title: 'Manage Events',
+            subtitle: 'Add or remove events/appointments for $elderName.',
+            icon: Icons.event,
             color: Colors.deepPurple,
             onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => AppointmentScreen(targetElderId: elderId)));

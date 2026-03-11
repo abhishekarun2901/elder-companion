@@ -130,10 +130,10 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Appointment scheduled')));
+      ).showSnackBar(const SnackBar(content: Text('Event scheduled')));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error scheduling appointment: $e')),
+        SnackBar(content: Text('Error scheduling event: $e')),
       );
     }
   }
@@ -141,7 +141,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Appointments')),
+      appBar: AppBar(title: const Text('Events & Appointments')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -153,14 +153,14 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                 children: [
                   TextFormField(
                     controller: _doctorController,
-                    decoration: const InputDecoration(labelText: 'Doctor Name'),
+                    decoration: const InputDecoration(labelText: 'Person / Event Name'),
                     validator: (v) => v!.isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: _locationController,
                     decoration: const InputDecoration(
-                      labelText: 'Location / Hospital',
+                      labelText: 'Location',
                     ),
                     validator: (v) => v!.isEmpty ? 'Required' : null,
                   ),
@@ -202,7 +202,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _saveAppointment,
-                      child: const Text('Schedule Appointment'),
+                      child: const Text('Schedule Event'),
                     ),
                   ),
                 ],
@@ -214,7 +214,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                "Upcoming Appointments",
+                "Upcoming Events",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
@@ -233,7 +233,7 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
 
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                     return const Center(
-                      child: Text('No appointments scheduled'),
+                      child: Text('No events scheduled'),
                     );
                   }
 
@@ -261,10 +261,10 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
                       return Card(
                         child: ListTile(
                           leading: const Icon(
-                            Icons.calendar_today,
+                            Icons.event,
                             color: Colors.deepPurple,
                           ),
-                          title: Text(data['doctorName'] ?? 'Appointment'),
+                          title: Text(data['doctorName'] ?? 'Event'),
                           subtitle: Text(
                             '${DateFormat.yMMMd().format(dt)} at ${DateFormat.jm().format(dt)}\n${data['location'] ?? ''}',
                           ),
@@ -297,13 +297,13 @@ class _AppointmentScreenState extends State<AppointmentScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Appointment deleted')),
+          const SnackBar(content: Text('Event deleted')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete appointment: $e')),
+          SnackBar(content: Text('Failed to delete event: $e')),
         );
       }
     }

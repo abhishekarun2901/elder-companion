@@ -3,15 +3,18 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:intl/intl.dart';
+
 import 'profile_details_screen.dart';
 import 'chat_screen.dart';
 import 'brain_games_screen.dart';
 import 'health_vitals_screen.dart';
 import 'emergency_contact.dart';
 import 'add_medicine_screen.dart';
-import 'services/voice_service.dart'; // Import VoiceService
-import 'services/notification_service.dart'; // Import NotificationService
-import 'sudoku.dart'; // Import Sudoku
+import 'medicine_reminder.dart';  // Import the overhauled screen
+import 'services/voice_service.dart';
+import 'services/notification_service.dart';
+import 'sudoku.dart';
 import 'memory_game.dart'; // Import MemoryGame
 import 'appointment_screen.dart'; // Import AppointmentScreen
 import 'services/location_service.dart'; // Import LocationService
@@ -237,8 +240,8 @@ class _HomeScreenState extends State<HomeScreen> {
         context,
         MaterialPageRoute(builder: (_) => const EmergencyContactScreen()),
       );
-    } else if (lowerCommand.contains("appointment") ||
-        lowerCommand.contains("doctor")) {
+    } else if (lowerCommand.contains("event") ||
+        lowerCommand.contains("doctor") || lowerCommand.contains("appointment")) {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const AppointmentScreen()),
@@ -260,17 +263,17 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         break;
 
-      case 'Appointment':
+      case 'Events':
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const AppointmentScreen()),
         );
         break;
 
-      case 'Add Medicine':
+      case 'My Medicines':
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const AddMedicineScreen()),
+          MaterialPageRoute(builder: (_) => const MedicineReminder()),
         );
         break;
 
@@ -326,17 +329,17 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
 
     CareFeature(
-      title: 'Appointment',
-      icon: Icons.person_pin_circle,
+      title: 'Events',
+      icon: Icons.event,
       color: Colors.deepPurple,
-      onTap: (c) => handleFeatureTap(c, 'Appointment'),
+      onTap: (c) => handleFeatureTap(c, 'Events'),
     ),
 
     CareFeature(
-      title: 'Add Medicine',
+      title: 'My Medicines',
       icon: Icons.medical_services,
       color: Colors.orange,
-      onTap: (c) => handleFeatureTap(c, 'Add Medicine'),
+      onTap: (c) => handleFeatureTap(c, 'My Medicines'),
     ),
 
     CareFeature(
@@ -392,16 +395,25 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: GridView.builder(
-          itemCount: _features.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 0.7,
-          ),
-          itemBuilder: (context, index) =>
-              CareFeatureButton(feature: _features[index]),
+        child: Column(
+          children: [
+            _buildDailyMedsBanner(),
+            _buildAppointmentsBanner(),
+            const SizedBox(height: 16),
+            Expanded(
+              child: GridView.builder(
+                itemCount: _features.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 0.7,
+                ),
+                itemBuilder: (context, index) =>
+                    CareFeatureButton(feature: _features[index]),
+              ),
+            ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -410,6 +422,192 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Icon(_isListening ? Icons.mic : Icons.mic_none),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    );
+  }
+
+  // --- Daily Medications Banner ---
+  Widget _buildDailyMedsBanner() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    final todayKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('medicines')
+          .where('elderId', isEqualTo: user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const SizedBox.shrink(); 
+        }
+
+        final allDocs = snapshot.data!.docs;
+        final int currentWeekday = DateTime.now().weekday;
+        
+        final docs = allDocs.where((d) {
+          final data = d.data() as Map<String, dynamic>;
+          final days = List<int>.from(data['selectedDays'] ?? [1,2,3,4,5,6,7]);
+          return days.contains(currentWeekday);
+        }).toList();
+
+        if (docs.isEmpty) {
+          return const SizedBox.shrink(); // Hide if completely empty schedule for today
+        }
+        
+        // We will build a list of Un-taken medications
+        return FutureBuilder<List<DocumentSnapshot>>(
+          future: Future.wait(docs.map((medDoc) async {
+            final logDoc = await FirebaseFirestore.instance
+                .collection('medicines')
+                .doc(medDoc.id)
+                .collection('adherence_logs')
+                .doc(todayKey)
+                .get();
+            // Return null if taken, return medDoc if NOT taken
+            return logDoc.exists ? null : medDoc;
+          }).toList()).then((list) => list.where((doc) => doc != null).cast<DocumentSnapshot>().toList()), // filter out nulls
+          builder: (context, pendingSnapshot) {
+            if (pendingSnapshot.hasError) {
+              return Text("Error loading adherence: ${pendingSnapshot.error}", style: const TextStyle(color: Colors.red));
+            }
+
+            // Need to handle state while Futures are resolving
+            if (pendingSnapshot.connectionState == ConnectionState.waiting) {
+              return const CircularProgressIndicator();
+            }
+
+            final pendingMeds = pendingSnapshot.data ?? [];
+            if (pendingMeds.isEmpty) {
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text("You've taken all your medicines today! 🎉", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 32),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("Action Needed", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.deepOrange)),
+                        Text("You have ${pendingMeds.length} pending medication${pendingMeds.length == 1 ? '' : 's'} today.", style: TextStyle(color: Colors.orange.shade900)),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const MedicineReminder()),
+                      );
+                      // Force rebuild when returning
+                      if (mounted) setState(() {});
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
+                    child: const Text("View"),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // --- Upcoming Appointments Banner ---
+  Widget _buildAppointmentsBanner() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    final now = DateTime.now();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('appointments')
+          .where('elderId', isEqualTo: user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final allDocs = snapshot.data!.docs;
+
+        // Filter for ONLY appointments scheduled for TODAY
+        final todaysAppointments = allDocs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final dt = DateTime.parse(data['dateTime']);
+          return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+        }).toList();
+
+        if (todaysAppointments.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.deepPurple.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.deepPurple.shade200),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.calendar_today, color: Colors.deepPurple, size: 32),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Upcoming Event", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.deepPurple)),
+                    Text("You have ${todaysAppointments.length} event${todaysAppointments.length == 1 ? '' : 's'} today.", style: TextStyle(color: Colors.deepPurple.shade900)),
+                  ],
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AppointmentScreen()),
+                  );
+                  if (mounted) setState(() {});
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
+                child: const Text("View"),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
