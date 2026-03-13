@@ -1,6 +1,9 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:share_plus/share_plus.dart';
 import 'home_screen.dart'; // Import HomeScreen for navigation
 
 class ProfileDetailsScreen extends StatefulWidget {
@@ -28,6 +31,68 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
 
   bool _isLoading = false;
   bool _isFetching = true; // Added to show loading while fetching data
+  String _preferredLanguage = 'auto';
+
+  String _generateInviteCode({int length = 6}) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = Random.secure();
+    return List.generate(length, (_) => chars[random.nextInt(chars.length)])
+        .join();
+  }
+
+  Future<void> _generateAndShareInviteCode() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final code = _generateInviteCode();
+    final expiresAt = Timestamp.fromDate(
+      DateTime.now().add(const Duration(hours: 24)),
+    );
+
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      'pendingInviteCode': code,
+      'inviteCodeExpiresAt': expiresAt,
+    }, SetOptions(merge: true));
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Caregiver Invite Code'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              code,
+              style: const TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Share this code with your caregiver — valid for 24 hours.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Share.share('Use this Mitra caregiver invite code: $code');
+            },
+            child: const Text('Share'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -67,6 +132,7 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
           _hobbiesController.text = data['hobbies'] ?? '';
           _skillsController.text = data['skills'] ?? '';
           _interestsController.text = data['interests'] ?? '';
+          _preferredLanguage = (data['preferredLanguage'] ?? 'auto').toString();
         });
       }
     } catch (e) {
@@ -140,6 +206,7 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
         'interests': _interestsController.text,
         'hobbies': _hobbiesController.text,
         'skills': _skillsController.text,
+        'preferredLanguage': _preferredLanguage,
         'createdAt': FieldValue.serverTimestamp(),
       };
 
@@ -217,6 +284,14 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
                 keyboardType: TextInputType.phone,
                 isRequired: true,
               ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: ElevatedButton.icon(
+                  onPressed: _generateAndShareInviteCode,
+                  icon: const Icon(Icons.share),
+                  label: const Text('Generate Invite Code'),
+                ),
+              ),
               const SizedBox(height: 30),
 
               _buildSectionTitle('Emergency Contact', Colors.red),
@@ -234,6 +309,24 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
               const SizedBox(height: 30),
 
               _buildSectionTitle('Your Interests & Abilities', Colors.blue),
+              DropdownButtonFormField<String>(
+                value: _preferredLanguage,
+                decoration: const InputDecoration(
+                  labelText: 'Preferred Language',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'auto', child: Text('Auto (EN/ML)')),
+                  DropdownMenuItem(value: 'en-US', child: Text('English')),
+                  DropdownMenuItem(value: 'ml-IN', child: Text('Malayalam')),
+                ],
+                onChanged: (v) {
+                  setState(() {
+                    _preferredLanguage = v ?? 'auto';
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
               ElderFriendlyTextField(
                 controller: _hobbiesController,
                 label: 'What are your hobbies?',

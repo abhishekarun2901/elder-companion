@@ -13,6 +13,12 @@ setGlobalOptions({maxInstances: 10});
 const db = admin.firestore();
 const MAX_MEMORY_ENTRIES = 50;
 
+exports.generateChatSummary = require("./generateChatSummary").generateChatSummary;
+exports.triggerDistressAlert = require("./triggerDistressAlert").triggerDistressAlert;
+exports.dailyMedicationCheck = require("./dailyMedicationCheck").dailyMedicationCheck;
+exports.checkInactivity = require("./checkInactivity").checkInactivity;
+exports.triggerGeofenceAlert = require("./triggerGeofenceAlert").triggerGeofenceAlert;
+
 // ============================================
 // 1. STORE CONVERSATION MEMORY
 // ============================================

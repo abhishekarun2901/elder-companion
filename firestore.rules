@@ -1,41 +1,101 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isElderOrCaregiver(elderId) {
+      return signedIn() && (
+        request.auth.uid == elderId ||
+        request.auth.uid == get(/databases/$(database)/documents/users/$(elderId)).data.caregiverUid
+      );
+    }
+
+    function elderIdFromDoc() {
+      return resource == null ? request.resource.data.elderId : resource.data.elderId;
+    }
+
+    function isCaregiverLinkFieldUpdate() {
+      return resource != null &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'caregiverPhone',
+          'caregiverUid',
+          'pendingInviteCode',
+          'inviteCodeExpiresAt'
+        ]);
+    }
+
     match /users/{userId} {
-      allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if signedIn();
+      allow create, delete: if signedIn() && request.auth.uid == userId;
+      allow update: if signedIn() && (
+        request.auth.uid == userId ||
+        isCaregiverLinkFieldUpdate()
+      );
 
       match /memory_entries/{memoryId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == userId;
       }
 
       match /key_facts/{factId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == userId;
       }
 
       match /health_vitals/{vitalId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == userId;
       }
 
       match /emergency_contacts/{contactId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && request.auth.uid == userId;
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == userId;
+      }
+
+      match /chat_summaries/{summaryId} {
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == userId;
+      }
+
+      match /alerts/{alertId} {
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == userId;
+      }
+
+      match /mood_logs/{moodLogId} {
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == userId;
+      }
+
+      match /caregiver_notes/{noteId} {
+        allow read, write: if signedIn();
+      }
+
+      match /location_history/{locationId} {
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == userId;
+      }
+
+      match /wellness_logs/{wellnessId} {
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == userId;
       }
     }
 
     match /medicines/{medicineId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isElderOrCaregiver(elderIdFromDoc());
       
       match /adherence_logs/{logId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isElderOrCaregiver(
+          get(/databases/$(database)/documents/medicines/$(medicineId)).data.elderId
+        );
       }
     }
 
     match /appointments/{appointmentId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isElderOrCaregiver(elderIdFromDoc());
     }
   }
 }

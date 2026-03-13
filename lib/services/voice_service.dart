@@ -12,11 +12,23 @@ class VoiceService {
 
   late stt.SpeechToText _speech;
   bool _isInitialized = false;
+  String _currentLocale = 'en_US';
 
   // Use ValueNotifier to broadcast state changes
   final ValueNotifier<bool> isListeningNotifier = ValueNotifier(false);
 
   bool get isListening => isListeningNotifier.value;
+
+  void setLocale(String locale) {
+    _currentLocale = locale.replaceAll('-', '_');
+  }
+
+  Future<List<stt.LocaleName>> getAvailableLocales() async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+    return _speech.locales();
+  }
 
   Future<bool> initialize() async {
     if (_isInitialized) return true;
@@ -60,7 +72,7 @@ class VoiceService {
             onResult(val.recognizedWords);
           }
         },
-        localeId: "en_US",
+        localeId: _currentLocale,
         listenFor: const Duration(seconds: 30),
         pauseFor: const Duration(seconds: 5),
         partialResults: true,

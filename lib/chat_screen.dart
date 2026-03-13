@@ -1,4 +1,7 @@
 // --- FILE: chat_screen.dart (UPDATED WITH KEY FACTS STORAGE & INITIAL MESSAGE) ---
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_ai/firebase_ai.dart';
@@ -7,17 +10,25 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'services/connectivity_service.dart';
 
 class ChatPage extends StatefulWidget {
   final String title;
+  final bool wellnessMode;
 
-  const ChatPage({super.key, required this.title});
+  const ChatPage({
+    super.key,
+    required this.title,
+    this.wellnessMode = false,
+  });
 
   @override
   State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final ChatUser _currentUser = ChatUser(id: "user");
   final ChatUser _aiUser = ChatUser(id: "ai", firstName: "Mitra");
 
@@ -33,6 +44,10 @@ class _ChatPageState extends State<ChatPage> {
   late stt.SpeechToText _speech;
   bool _isListening = false;
   String _lastWords = '';
+  String _detectedLanguage = 'en-US';
+  String _languagePreference = 'auto'; // auto | en-US | ml-IN
+  final List<String> _languageHistory = [];
+  bool _mlSpeechAvailable = false;
 
   // Text-to-Speech
   late FlutterTts _flutterTts;
@@ -46,7 +61,9 @@ class _ChatPageState extends State<ChatPage> {
   // PERSISTENT MEMORY
   Map<String, dynamic>? _persistentMemory;
   List<Map<String, dynamic>> _recentMemories = [];
+  List<String> _caregiverNotes = [];
   bool _isLoadingMemory = true;
+  bool _isLoadingCaregiverNotes = true;
   bool _initialMessageSent = false;
 
   final String _systemPrompt = """
@@ -117,19 +134,157 @@ Important rules:
 Be a caring companion — like talking to a close friend.
 """;
 
+  DateTime _sessionStartTime = DateTime.now();
+  DateTime? _lastMessageAt;
+  bool _isGeneratingSummary = false;
+  final List<Map<String, String>> _sessionMessages = [];
+  StreamSubscription<bool>? _connectivitySub;
+  static const List<Map<String, String>> _distressKeywords = [
+    {'keyword': 'chest pain', 'severity': 'CRITICAL'},
+    {'keyword': "can't breathe", 'severity': 'CRITICAL'},
+    {'keyword': 'fell', 'severity': 'CRITICAL'},
+    {'keyword': 'help me', 'severity': 'CRITICAL'},
+    {'keyword': 'emergency', 'severity': 'CRITICAL'},
+    {'keyword': 'lonely', 'severity': 'CAUTION'},
+    {'keyword': 'sad', 'severity': 'CAUTION'},
+    {'keyword': 'scared', 'severity': 'CAUTION'},
+    {'keyword': 'nobody', 'severity': 'CAUTION'},
+    {'keyword': 'alone', 'severity': 'CAUTION'},
+    {'keyword': 'വേദന', 'severity': 'CRITICAL'},
+    {'keyword': 'ശ്വാസം', 'severity': 'CRITICAL'},
+    {'keyword': 'സഹായിക്കൂ', 'severity': 'CRITICAL'},
+    {'keyword': 'ഒറ്റപ്പെട്ട', 'severity': 'CAUTION'},
+    {'keyword': 'ഭയം', 'severity': 'CAUTION'},
+  ];
+
+  static const Duration _sessionIdleTimeout = Duration(minutes: 30);
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeAI();
     _initializeSpeech();
     _initializeTts();
     _loadUserProfile();
     _loadPersistentMemory();
+    _loadCaregiverNotes();
+    if (ConnectivityService().isOnline) {
+      _syncPendingMemory();
+    }
+    _connectivitySub = ConnectivityService().onlineStream.listen((online) {
+      if (online) {
+        _syncPendingMemory();
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.inactive) {
+      _finalizeChatSession();
+    }
   }
 
   void _initializeAI() {
     _firebaseAI = FirebaseAI.vertexAI(auth: FirebaseAuth.instance);
     _model = _firebaseAI.generativeModel(model: 'gemini-2.5-flash');
+  }
+
+  bool _hasMalayalamChars(String text) {
+    return RegExp(r'[\u0D00-\u0D7F]').hasMatch(text);
+  }
+
+  Future<void> _applyLanguagePreference(
+    String preference, {
+    bool persist = false,
+  }) async {
+    String normalized = preference;
+    if (normalized != 'auto' && normalized != 'en-US' && normalized != 'ml-IN') {
+      normalized = 'auto';
+    }
+
+    if (normalized == 'ml-IN' && !_mlSpeechAvailable) {
+      normalized = 'en-US';
+      debugPrint('ml-IN STT not available, falling back to en-US');
+    }
+
+    setState(() {
+      _languagePreference = normalized;
+      _detectedLanguage = normalized == 'auto' ? _detectedLanguage : normalized;
+    });
+
+    if (persist) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'preferredLanguage': normalized,
+        }, SetOptions(merge: true));
+      }
+    }
+  }
+
+  void _updateAutoLanguageFromMessage(String messageText) {
+    final looksMalayalam = _hasMalayalamChars(messageText) || _isManglish(messageText);
+    _languageHistory.add(looksMalayalam ? 'ml' : 'en');
+    if (_languageHistory.length > 5) {
+      _languageHistory.removeAt(0);
+    }
+
+    if (_languagePreference != 'auto') return;
+
+    final mlCount = _languageHistory.where((e) => e == 'ml').length;
+    final target = (mlCount >= 3 && _mlSpeechAvailable) ? 'ml-IN' : 'en-US';
+    if (target != _detectedLanguage) {
+      setState(() {
+        _detectedLanguage = target;
+      });
+    }
+  }
+
+  Future<void> _showLanguagePicker() async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Voice Language'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<String>(
+              title: const Text('Auto'),
+              value: 'auto',
+              groupValue: _languagePreference,
+              onChanged: (v) async {
+                Navigator.pop(context);
+                await _applyLanguagePreference(v ?? 'auto', persist: true);
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('English'),
+              value: 'en-US',
+              groupValue: _languagePreference,
+              onChanged: (v) async {
+                Navigator.pop(context);
+                await _applyLanguagePreference(v ?? 'en-US', persist: true);
+              },
+            ),
+            RadioListTile<String>(
+              title: Text(_mlSpeechAvailable ? 'Malayalam' : 'Malayalam (unavailable)'),
+              value: 'ml-IN',
+              groupValue: _languagePreference,
+              onChanged: _mlSpeechAvailable
+                  ? (v) async {
+                      Navigator.pop(context);
+                      await _applyLanguagePreference(v ?? 'ml-IN', persist: true);
+                    }
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ============================================
@@ -145,10 +300,12 @@ Be a caring companion — like talking to a close friend.
             .get();
 
         if (docSnapshot.exists) {
+          final pref = (docSnapshot.data()?['preferredLanguage'] ?? 'auto').toString();
           setState(() {
             _userProfile = docSnapshot.data();
             _isLoadingProfile = false;
           });
+          await _applyLanguagePreference(pref, persist: false);
         } else {
           setState(() {
             _isLoadingProfile = false;
@@ -201,11 +358,51 @@ Be a caring companion — like talking to a close friend.
     _checkAndSendInitialMessage();
   }
 
+  Future<void> _loadCaregiverNotes() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final notesSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('caregiver_notes')
+            .where('active', isEqualTo: true)
+            .get();
+
+        final notes = notesSnap.docs
+            .map((d) => (d.data()['text'] ?? '').toString().trim())
+            .where((t) => t.isNotEmpty)
+            .toList();
+
+        setState(() {
+          _caregiverNotes = notes;
+          _isLoadingCaregiverNotes = false;
+        });
+      } else {
+        setState(() {
+          _caregiverNotes = [];
+          _isLoadingCaregiverNotes = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading caregiver notes: $e');
+      setState(() {
+        _caregiverNotes = [];
+        _isLoadingCaregiverNotes = false;
+      });
+    }
+
+    _checkAndSendInitialMessage();
+  }
+
   // ============================================
   // CHECK AND SEND INITIAL MESSAGE
   // ============================================
   void _checkAndSendInitialMessage() {
-    if (!_initialMessageSent && !_isLoadingProfile && !_isLoadingMemory) {
+    if (!_initialMessageSent &&
+        !_isLoadingProfile &&
+        !_isLoadingMemory &&
+        !_isLoadingCaregiverNotes) {
       _sendInitialMessage();
     }
   }
@@ -260,6 +457,15 @@ Be a caring companion — like talking to a close friend.
       }
     }
 
+    if (_caregiverNotes.isNotEmpty) {
+      context.writeln(
+        "\n### CAREGIVER NOTES (trusted context about this user):",
+      );
+      for (final note in _caregiverNotes) {
+        context.writeln("- $note");
+      }
+    }
+
     context.writeln(
       "\nUse all this context to provide deeply personalized responses.",
     );
@@ -295,45 +501,72 @@ Be a caring companion — like talking to a close friend.
     return manglishKeywords.any((word) => lower.contains(word));
   }
 
-  String? _detectMood(String message) {
+  String _detectMood(String message) {
     final text = message.toLowerCase();
 
-    // English
-    if (text.contains('tired') ||
-        text.contains('exhausted') ||
-        text.contains('weak') ||
-        text.contains('sleepy')) {
-      return 'tired';
+    if (text.contains('anxious') ||
+        text.contains('worried') ||
+        text.contains('panic') ||
+        text.contains('fear') ||
+        text.contains('nervous') ||
+        text.contains('ഭയം') ||
+        text.contains('ആശങ്ക')) {
+      return 'anxious';
     }
 
     if (text.contains('sad') ||
         text.contains('lonely') ||
         text.contains('low') ||
-        text.contains('depressed')) {
+        text.contains('depressed') ||
+        text.contains('down') ||
+        text.contains('വിഷമം') ||
+        text.contains('ഒറ്റപ്പെട') ||
+        text.contains('ദുഃഖ') ||
+        text.contains('സങ്കട')) {
       return 'sad';
+    }
+
+    if (text.contains('tired') ||
+        text.contains('exhausted') ||
+        text.contains('weak') ||
+        text.contains('sleepy') ||
+        text.contains('fatigue') ||
+        text.contains('ക്ഷീണം') ||
+        text.contains('തളർച്ച') ||
+        text.contains('ക്ലാന്ത')) {
+      return 'tired';
+    }
+
+    if (text.contains('calm') ||
+        text.contains('peaceful') ||
+        text.contains('relaxed') ||
+        text.contains('okay') ||
+        text.contains('settled') ||
+        text.contains('ശാന്ത') ||
+        text.contains('സമാധാനം')) {
+      return 'calm';
     }
 
     if (text.contains('happy') ||
         text.contains('good') ||
         text.contains('fine') ||
-        text.contains('great')) {
+        text.contains('great') ||
+        text.contains('better') ||
+        text.contains('glad') ||
+        text.contains('സന്തോഷ') ||
+        text.contains('നല്ല')) {
       return 'happy';
     }
 
-    // Malayalam (basic but effective)
-    if (text.contains('തളർച്ച') ||
-        text.contains('ക്ഷീണം') ||
-        text.contains('വേദന')) {
-      return 'tired';
-    }
+    return 'calm';
+  }
 
-    if (text.contains('വിഷമം') ||
-        text.contains('ഒറ്റപ്പെടല്') ||
-        text.contains('ദുഖം')) {
-      return 'sad';
-    }
-
-    return null;
+  String _hourBucketId(DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    final h = date.hour.toString().padLeft(2, '0');
+    return '${y}${m}${d}_$h';
   }
 
   Future<void> _storeConversationMemory(
@@ -345,77 +578,29 @@ Be a caring companion — like talking to a close friend.
       if (user == null) return;
 
       final firestore = FirebaseFirestore.instance;
-      Future<void> _storeConversationMemory(
-        String userMessage,
-        String aiResponse,
-      ) async {
-        try {
-          final user = FirebaseAuth.instance.currentUser;
-          if (user == null) return;
 
-          final firestore = FirebaseFirestore.instance;
+      final mood = _detectMood(userMessage);
+      await firestore.collection('users').doc(user.uid).set({
+        'lastMood': mood,
+        'lastMoodAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-          // ============================
-          // 🧠 NEW: DETECT & STORE MOOD
-          // ============================
-          final String? mood = _detectMood(userMessage);
-
-          if (mood != null) {
-            await firestore.collection('users').doc(user.uid).set({
-              'lastMood': mood,
-              'lastMoodAt': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
-          }
-
-          // ============================
-          // EXISTING LOGIC (UNCHANGED)
-          // ============================
-
-          // Extract key facts from the conversation
-          List<String> keyFacts = _extractKeyFacts(userMessage, aiResponse);
-
-          // 1. Store the memory entry (Cloud Function)
-          final storeMemoryCallable = _functions.httpsCallable(
-            'storeConversationMemory',
-          );
-          await storeMemoryCallable.call({
-            'message': userMessage,
-            'response': aiResponse,
-            'keyFacts': keyFacts,
-          });
-
-          // 2. Store individual key facts to Firestore
-          if (keyFacts.isNotEmpty) {
-            final batch = firestore.batch();
-
-            for (String fact in keyFacts) {
-              final parts = fact.split(':');
-              if (parts.length >= 2) {
-                final key = parts[0].trim();
-                final value = parts.sublist(1).join(':').trim();
-
-                final factRef = firestore
-                    .collection('users')
-                    .doc(user.uid)
-                    .collection('key_facts')
-                    .doc(key);
-
-                batch.set(factRef, {
-                  'value': value,
-                  'updatedAt': FieldValue.serverTimestamp(),
-                  'factType': key,
-                }, SetOptions(merge: true));
-              }
-            }
-
-            await batch.commit();
-          }
-
-          // Reload memory for future context
-          await _loadPersistentMemory();
-        } catch (e) {
-          print('Error storing memory: $e');
-        }
+      final now = DateTime.now();
+      final moodLogId = _hourBucketId(now);
+      final moodLogRef = firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('mood_logs')
+          .doc(moodLogId);
+      final moodLogSnap = await moodLogRef.get();
+      if (!moodLogSnap.exists) {
+        final snippet =
+            userMessage.length > 60 ? userMessage.substring(0, 60) : userMessage;
+        await moodLogRef.set({
+          'mood': mood,
+          'messageSnippet': snippet,
+          'timestamp': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: false));
       }
 
       // Extract key facts from the conversation
@@ -425,11 +610,15 @@ Be a caring companion — like talking to a close friend.
       final storeMemoryCallable = _functions.httpsCallable(
         'storeConversationMemory',
       );
-      await storeMemoryCallable.call({
-        'message': userMessage,
-        'response': aiResponse,
-        'keyFacts': keyFacts,
-      });
+      try {
+        await storeMemoryCallable.call({
+          'message': userMessage,
+          'response': aiResponse,
+          'keyFacts': keyFacts,
+        });
+      } catch (e) {
+        await _queuePendingMemorySync(userMessage, aiResponse);
+      }
 
       // 2. Store individual key facts to Firestore
       if (keyFacts.isNotEmpty) {
@@ -500,6 +689,17 @@ Be a caring companion — like talking to a close friend.
       onError: (error) => print('Speech recognition error: $error'),
       onStatus: (status) => print('Speech recognition status: $status'),
     );
+    try {
+      final locales = await _speech.locales();
+      _mlSpeechAvailable = locales.any(
+        (l) => l.localeId.toLowerCase().startsWith('ml'),
+      );
+      if (!_mlSpeechAvailable && _languagePreference == 'ml-IN') {
+        await _applyLanguagePreference('en-US', persist: false);
+      }
+    } catch (e) {
+      debugPrint('Failed to inspect speech locales: $e');
+    }
   }
 
   Future<void> _initializeTts() async {
@@ -521,6 +721,13 @@ Be a caring companion — like talking to a close friend.
   void _sendInitialMessage() {
     String greeting =
         "Hello! I am Mitra, your personal companion. I'm here to chat, remind you of things, and keep you company.";
+
+    if (widget.wellnessMode) {
+      final name = (_userProfile?['name'] ?? '').toString();
+      greeting = name.isEmpty
+          ? 'Good morning! How are you feeling today on a scale of 1–10?'
+          : 'Good morning $name! How are you feeling today on a scale of 1–10?';
+    }
 
     if (_userProfile != null && _userProfile!['name'] != null) {
       greeting =
@@ -547,7 +754,7 @@ Be a caring companion — like talking to a close friend.
     if (!_speechEnabled) return;
 
     // Detect Malayalam characters
-    final bool isMalayalam = RegExp(r'[\u0D00-\u0D7F]').hasMatch(text);
+    final bool isMalayalam = _hasMalayalamChars(text) || _isManglish(text);
 
     if (isMalayalam) {
       await _flutterTts.setLanguage("ml-IN");
@@ -570,6 +777,12 @@ Be a caring companion — like talking to a close friend.
       bool available = await _speech.initialize();
       if (available) {
         setState(() => _isListening = true);
+        final localeId = (_languagePreference == 'auto'
+                ? _detectedLanguage
+                : _languagePreference) ==
+            'ml-IN'
+            ? 'ml_IN'
+            : 'en_US';
         _speech.listen(
           onResult: (result) {
             setState(() {
@@ -577,6 +790,7 @@ Be a caring companion — like talking to a close friend.
               _controller.text = _lastWords;
             });
           },
+          localeId: localeId,
           listenFor: const Duration(seconds: 30),
           pauseFor: const Duration(seconds: 5),
           cancelOnError: true,
@@ -597,6 +811,27 @@ Be a caring companion — like talking to a close friend.
     final messageText = text ?? _controller.text;
     if (messageText.trim().isEmpty) return;
 
+    if (!ConnectivityService().isOnline) {
+      final offlineMessage = ChatMessage(
+        user: _aiUser,
+        createdAt: DateTime.now(),
+        text: "I'm not connected to the internet right now. I'll be back when you're online.",
+      );
+      setState(() {
+        _messages.insert(0, offlineMessage);
+      });
+      return;
+    }
+
+    _updateAutoLanguageFromMessage(messageText);
+
+    final now = DateTime.now();
+    if (_lastMessageAt != null &&
+        now.difference(_lastMessageAt!) > _sessionIdleTimeout &&
+        _sessionMessages.isNotEmpty) {
+      await _finalizeChatSession(sessionEnd: _lastMessageAt!);
+    }
+
     await _stopSpeaking();
 
     final userMessage = ChatMessage(
@@ -609,6 +844,24 @@ Be a caring companion — like talking to a close friend.
       _messages.insert(0, userMessage);
       _controller.clear();
     });
+
+    final authUser = FirebaseAuth.instance.currentUser;
+    if (authUser != null) {
+      FirebaseFirestore.instance.collection('users').doc(authUser.uid).set({
+        'lastActive': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).catchError((e) {
+        print('Failed to update lastActive: $e');
+      });
+    }
+
+    _sessionMessages.add({'role': 'user', 'text': messageText});
+    _lastMessageAt = DateTime.now();
+
+    _checkForDistress(messageText);
+
+    if (widget.wellnessMode) {
+      await _storeWellnessScoreIfPresent(messageText);
+    }
 
     _scrollToTop();
 
@@ -637,6 +890,8 @@ Be a caring companion — like talking to a close friend.
       setState(() {
         _messages.insert(0, aiMessage);
       });
+      _sessionMessages.add({'role': 'ai', 'text': aiText});
+      _lastMessageAt = DateTime.now();
 
       // Store the conversation to persistent memory with key facts
       await _storeConversationMemory(messageText, aiText);
@@ -669,8 +924,154 @@ Be a caring companion — like talking to a close friend.
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _finalizeChatSession();
+    _connectivitySub?.cancel();
     _flutterTts.stop();
     super.dispose();
+  }
+
+  Future<void> _queuePendingMemorySync(String message, String response) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('pending_memory_sync');
+      final list = raw == null
+          ? <Map<String, dynamic>>[]
+          : List<Map<String, dynamic>>.from(jsonDecode(raw));
+
+      list.add({
+        'message': message,
+        'response': response,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+
+      await prefs.setString('pending_memory_sync', jsonEncode(list));
+    } catch (e) {
+      print('Failed to queue pending memory sync: $e');
+    }
+  }
+
+  Future<void> _syncPendingMemory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('pending_memory_sync');
+      if (raw == null || raw.isEmpty) return;
+
+      final pending = List<Map<String, dynamic>>.from(jsonDecode(raw));
+      if (pending.isEmpty) return;
+
+      final callable = _functions.httpsCallable('storeConversationMemory');
+      final remaining = <Map<String, dynamic>>[];
+
+      for (final item in pending) {
+        try {
+          final message = (item['message'] ?? '').toString();
+          final response = (item['response'] ?? '').toString();
+          final keyFacts = _extractKeyFacts(message, response);
+
+          await callable.call({
+            'message': message,
+            'response': response,
+            'keyFacts': keyFacts,
+          });
+        } catch (_) {
+          remaining.add(item);
+        }
+      }
+
+      await prefs.setString('pending_memory_sync', jsonEncode(remaining));
+    } catch (e) {
+      print('Failed syncing pending memory: $e');
+    }
+  }
+
+  Future<void> _finalizeChatSession({DateTime? sessionEnd}) async {
+    if (_isGeneratingSummary || _sessionMessages.isEmpty) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _isGeneratingSummary = true;
+    final endTime = sessionEnd ?? DateTime.now();
+
+    try {
+      final callable = _functions.httpsCallable('generateChatSummary');
+      await callable.call({
+        'uid': user.uid,
+        'sessionStart': _sessionStartTime.toIso8601String(),
+        'sessionEnd': endTime.toIso8601String(),
+        'messages': _sessionMessages,
+      });
+
+      _sessionMessages.clear();
+      _sessionStartTime = DateTime.now();
+      _lastMessageAt = null;
+    } catch (e) {
+      print('Error generating chat summary: $e');
+    } finally {
+      _isGeneratingSummary = false;
+    }
+  }
+
+  void _checkForDistress(String message) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final normalized = message.toLowerCase();
+    for (final item in _distressKeywords) {
+      final keyword = item['keyword'] ?? '';
+      final severity = item['severity'] ?? 'CAUTION';
+      if (keyword.isEmpty) continue;
+
+      final pattern = RegExp(
+        RegExp.escape(keyword.toLowerCase()),
+        caseSensitive: false,
+      );
+
+      if (pattern.hasMatch(normalized)) {
+        final snippet = message.length > 100 ? message.substring(0, 100) : message;
+        _functions
+            .httpsCallable('triggerDistressAlert')
+            .call({
+              'uid': user.uid,
+              'keyword': keyword,
+              'severity': severity,
+              'messageSnippet': snippet,
+            })
+            .catchError((e) {
+              print('Distress alert trigger failed: $e');
+            });
+        return;
+      }
+    }
+  }
+
+  Future<void> _storeWellnessScoreIfPresent(String messageText) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final match = RegExp(r'^\s*([1-9]|10)\s*$').firstMatch(messageText);
+    if (match == null) return;
+
+    final score = int.tryParse(match.group(1) ?? '');
+    if (score == null) return;
+
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    try {
+      final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      await userDoc.collection('wellness_logs').doc(today).set({
+        'score': score,
+        'message': messageText,
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await userDoc.set({
+        'lastWellnessScore': score,
+        'lastWellnessDate': today,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('Failed storing wellness score: $e');
+    }
   }
 
   @override
@@ -679,6 +1080,16 @@ Be a caring companion — like talking to a close friend.
       appBar: AppBar(
         title: Text(widget.title),
         actions: [
+          IconButton(
+            icon: Text(
+              _languagePreference == 'auto'
+                  ? 'AUTO'
+                  : ((_languagePreference == 'ml-IN') ? 'ML' : 'EN'),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+            tooltip: 'Language',
+            onPressed: _showLanguagePicker,
+          ),
           Row(
             children: [
               const Icon(Icons.volume_up, size: 20),
@@ -704,7 +1115,7 @@ Be a caring companion — like talking to a close friend.
             ),
         ],
       ),
-      body: (_isLoadingProfile || _isLoadingMemory)
+        body: (_isLoadingProfile || _isLoadingMemory || _isLoadingCaregiverNotes)
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [

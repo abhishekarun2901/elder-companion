@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'log_vitals_screen.dart';
 
 // Data model for a vital
@@ -68,6 +69,44 @@ class _HealthVitalsScreenState extends State<HealthVitalsScreen> {
   late Future<List<Vital>> _vitalsFuture;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  final List<_VitalChartConfig> _chartConfigs = const [
+    _VitalChartConfig(
+      vitalType: 'Heart Rate',
+      unit: 'BPM',
+      normalMin: 60,
+      normalMax: 100,
+      showBand: true,
+    ),
+    _VitalChartConfig(
+      vitalType: 'Blood Pressure',
+      unit: 'mmHg',
+      normalMin: 90,
+      normalMax: 120,
+      showBand: true,
+    ),
+    _VitalChartConfig(
+      vitalType: 'Blood Oxygen',
+      unit: '%',
+      normalMin: 95,
+      normalMax: 100,
+      showBand: true,
+    ),
+    _VitalChartConfig(
+      vitalType: 'Blood Glucose',
+      unit: 'mg/dL',
+      normalMin: 70,
+      normalMax: 140,
+      showBand: true,
+    ),
+    _VitalChartConfig(
+      vitalType: 'Steps Count',
+      unit: 'steps',
+      normalMin: 0,
+      normalMax: 0,
+      showBand: false,
+    ),
+  ];
 
   @override
   void initState() {
@@ -319,21 +358,46 @@ class _HealthVitalsScreenState extends State<HealthVitalsScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            Container(
-              height: 200,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: const Center(
-                child: Text(
-                  'Charting/Graphing Placeholder\n(Requires Charting Package)',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontStyle: FontStyle.italic,
-                  ),
+            DefaultTabController(
+              length: _chartConfigs.length,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  children: [
+                    TabBar(
+                      isScrollable: true,
+                      labelColor: Colors.teal.shade700,
+                      unselectedLabelColor: Colors.grey.shade600,
+                      indicatorColor: Colors.teal,
+                      tabs: _chartConfigs
+                          .map((cfg) => Tab(text: cfg.vitalType))
+                          .toList(),
+                    ),
+                    SizedBox(
+                      height: 280,
+                      child: TabBarView(
+                        children: _chartConfigs
+                            .map(
+                              (cfg) => Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: VitalChartWidget(
+                                  vitalType: cfg.vitalType,
+                                  targetUserId: _targetUserId,
+                                  unit: cfg.unit,
+                                  normalMin: cfg.normalMin,
+                                  normalMax: cfg.normalMax,
+                                  showBand: cfg.showBand,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -368,6 +432,264 @@ class _HealthVitalsScreenState extends State<HealthVitalsScreen> {
       ),
     );
   }
+}
+
+class _VitalChartConfig {
+  final String vitalType;
+  final String unit;
+  final double normalMin;
+  final double normalMax;
+  final bool showBand;
+
+  const _VitalChartConfig({
+    required this.vitalType,
+    required this.unit,
+    required this.normalMin,
+    required this.normalMax,
+    required this.showBand,
+  });
+}
+
+class VitalChartWidget extends StatefulWidget {
+  final String vitalType;
+  final String targetUserId;
+  final String unit;
+  final double normalMin;
+  final double normalMax;
+  final bool showBand;
+
+  const VitalChartWidget({
+    super.key,
+    required this.vitalType,
+    required this.targetUserId,
+    required this.unit,
+    required this.normalMin,
+    required this.normalMax,
+    required this.showBand,
+  });
+
+  @override
+  State<VitalChartWidget> createState() => _VitalChartWidgetState();
+}
+
+class _VitalChartWidgetState extends State<VitalChartWidget> {
+  bool _loading = true;
+  List<_ChartReading> _readings = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant VitalChartWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.vitalType != widget.vitalType ||
+        oldWidget.targetUserId != widget.targetUserId) {
+      _load();
+    }
+  }
+
+  double? _parseValue(String value) {
+    final raw = value.trim();
+    if (widget.vitalType == 'Blood Pressure') {
+      final parts = raw.split('/');
+      if (parts.isNotEmpty) {
+        return double.tryParse(parts.first.trim());
+      }
+    }
+
+    final cleaned = raw.replaceAll(RegExp(r'[^0-9.]'), '');
+    return double.tryParse(cleaned);
+  }
+
+  Future<void> _load() async {
+    if (widget.targetUserId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _readings = [];
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _loading = true;
+      });
+    }
+
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.targetUserId)
+          .collection('health_vitals')
+          .where('title', isEqualTo: widget.vitalType)
+          .orderBy('timestamp', descending: true)
+          .limit(30)
+          .get();
+
+      final rows = <_ChartReading>[];
+      for (final d in query.docs) {
+        final data = d.data();
+        final ts = (data['timestamp'] as Timestamp?)?.toDate();
+        if (ts == null) continue;
+
+        final parsed = _parseValue((data['value'] ?? '').toString());
+        if (parsed == null) continue;
+
+        rows.add(_ChartReading(time: ts, value: parsed));
+      }
+
+      rows.sort((a, b) => a.time.compareTo(b.time));
+
+      if (mounted) {
+        setState(() {
+          _readings = rows;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _readings = [];
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_readings.length < 2) {
+      return const Center(
+        child: Text(
+          'Not enough data points for trend chart.',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    final earliest = _readings.first.time;
+    final spots = _readings.map((r) {
+      final x = r.time.difference(earliest).inHours / 24.0;
+      return FlSpot(x, r.value);
+    }).toList();
+
+    final minYValue = _readings
+        .map((e) => e.value)
+        .reduce((a, b) => a < b ? a : b);
+    final maxYValue = _readings
+        .map((e) => e.value)
+        .reduce((a, b) => a > b ? a : b);
+
+    final minY = widget.showBand
+        ? (minYValue < widget.normalMin ? minYValue - 5 : widget.normalMin - 5)
+        : (minYValue - 5);
+    final maxY = widget.showBand
+        ? (maxYValue > widget.normalMax ? maxYValue + 5 : widget.normalMax + 5)
+        : (maxYValue + 5);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${widget.vitalType} (${widget.unit})',
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: LineChart(
+            LineChartData(
+              minY: minY,
+              maxY: maxY,
+              lineTouchData: const LineTouchData(enabled: true),
+              gridData: FlGridData(show: true, drawVerticalLine: false),
+              borderData: FlBorderData(
+                show: true,
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              titlesData: FlTitlesData(
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                leftTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: true, reservedSize: 42),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    interval: (spots.last.x / 3).clamp(1, 10).toDouble(),
+                    getTitlesWidget: (value, meta) {
+                      final date = earliest.add(
+                        Duration(hours: (value * 24).round()),
+                      );
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${date.day}/${date.month}',
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              rangeAnnotations: widget.showBand
+                  ? RangeAnnotations(
+                      horizontalRangeAnnotations: [
+                        HorizontalRangeAnnotation(
+                          y1: widget.normalMin,
+                          y2: widget.normalMax,
+                          color: Colors.green.withOpacity(0.12),
+                        ),
+                      ],
+                    )
+                  : const RangeAnnotations(),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  isCurved: true,
+                  barWidth: 3,
+                  color: Colors.teal,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (spot, percent, barData, index) {
+                      final outside = widget.showBand &&
+                          (spot.y < widget.normalMin || spot.y > widget.normalMax);
+                      return FlDotCirclePainter(
+                        radius: 3.5,
+                        color: outside ? Colors.red : Colors.teal,
+                        strokeWidth: 1,
+                        strokeColor: Colors.white,
+                      );
+                    },
+                  ),
+                  belowBarData: BarAreaData(show: false),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ChartReading {
+  final DateTime time;
+  final double value;
+
+  const _ChartReading({required this.time, required this.value});
 }
 
 // Vital card widget with swipe to delete and history view

@@ -1,0 +1,17 @@
+{
+  "bundles": {
+    "codebase-356": {
+      "name": "codebase",
+      "created": "2026-03-13T05:12:51.416Z",
+      "lastUsed": "2026-03-13T06:10:14.049Z",
+      "tags": [],
+      "files": [
+        "lib",
+        "firebase.json",
+        "firestore.indexes.json",
+        "firestore.rules",
+        "pubspec.yaml"
+      ]
+    }
+  }
+}

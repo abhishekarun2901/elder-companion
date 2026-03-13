@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../main.dart'; // Access navigatorKey
+import '../chat_screen.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 
 class NotificationService {
@@ -52,6 +53,16 @@ class NotificationService {
     await flutterLocalNotificationsPlugin.initialize(
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
+        if (response.payload == 'wellness_checkin') {
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) =>
+                  const ChatPage(title: 'Morning Check-in', wellnessMode: true),
+            ),
+          );
+          return;
+        }
+
         // Handle notification tap
         if (response.payload != null) {
           _speak(response.payload!); // Speak the payload (message)
@@ -79,6 +90,7 @@ class NotificationService {
     required String body,
     required DateTime scheduledTime,
     DateTimeComponents? matchDateTimeComponents,
+    String? payload,
   }) async {
     await flutterLocalNotificationsPlugin.zonedSchedule(
       id: id,
@@ -99,7 +111,7 @@ class NotificationService {
       ),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       matchDateTimeComponents: matchDateTimeComponents,
-      payload: "$title. $body", // Payload is what is spoken
+      payload: payload ?? "$title. $body", // Payload is what is spoken
     );
     debugPrint("Scheduled notification for $scheduledTime");
 

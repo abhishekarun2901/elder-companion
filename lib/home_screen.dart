@@ -1,7 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'package:intl/intl.dart';
 
@@ -14,6 +21,7 @@ import 'add_medicine_screen.dart';
 import 'medicine_reminder.dart';  // Import the overhauled screen
 import 'services/voice_service.dart';
 import 'services/notification_service.dart';
+import 'services/connectivity_service.dart';
 import 'sudoku.dart';
 import 'memory_game.dart'; // Import MemoryGame
 import 'appointment_screen.dart'; // Import AppointmentScreen
@@ -42,26 +50,70 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _emergencyContactName;
   String? _emergencyContactPhone;
   String? _userName;
+  Map<String, dynamic>? _userProfile;
   final VoiceService _voiceService = VoiceService();
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
   bool _isListening = false;
+  Timer? _locationTimer;
+  StreamSubscription<bool>? _connectivitySub;
+  bool _isOnline = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _updateActivity(isOpen: true);
     _loadEmergencyContact();
-    _updateLiveLocation();
+    _startLocationTracking();
+    _isOnline = ConnectivityService().isOnline;
+    ConnectivityService().refreshStatus();
+    _connectivitySub = ConnectivityService().onlineStream.listen((online) {
+      if (!mounted) return;
+      setState(() {
+        _isOnline = online;
+      });
+    });
     _voiceService.isListeningNotifier.addListener(_onListeningStateChanged);
     NotificationService().init(); // Initialize Notifications
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _updateActivity(isOpen: true);
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _updateActivity(isOpen: false);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _updateActivity(isOpen: false);
+    _locationTimer?.cancel();
+    _connectivitySub?.cancel();
     _voiceService.isListeningNotifier.removeListener(_onListeningStateChanged);
     super.dispose();
+  }
+
+  Future<void> _updateActivity({required bool isOpen}) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'isAppOpen': isOpen,
+        if (isOpen) 'lastActive': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Failed to update activity state: $e');
+    }
   }
 
   void _onListeningStateChanged() {
@@ -78,23 +130,87 @@ class _HomeScreenState extends State<HomeScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final docSnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
+    try {
+      final docSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get()
+          .timeout(const Duration(seconds: 4));
 
-    if (!docSnapshot.exists) return;
+      if (!docSnapshot.exists) return;
 
-    final data = docSnapshot.data();
-    setState(() {
-      _userName = data?['name'];
-      _emergencyContactName = data?['emergencyContact']?['name'];
-      _emergencyContactPhone = data?['emergencyContact']?['phone'];
+      final data = docSnapshot.data();
+      final prefs = await SharedPreferences.getInstance();
+      if (data != null) {
+        await prefs.setString('cached_profile', jsonEncode(data));
+      }
+
+      setState(() {
+        _userProfile = data;
+        _userName = data?['name'];
+        _emergencyContactName = data?['emergencyContact']?['name'];
+        _emergencyContactPhone = data?['emergencyContact']?['phone'];
+      });
+
+      await _scheduleWellnessCheckin();
+    } catch (e) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString('cached_profile');
+        if (raw != null && raw.isNotEmpty) {
+          final data = jsonDecode(raw) as Map<String, dynamic>;
+          if (mounted) {
+            setState(() {
+              _userProfile = data;
+              _userName = data['name'];
+              _emergencyContactName = data['emergencyContact']?['name'];
+              _emergencyContactPhone = data['emergencyContact']?['phone'];
+            });
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _scheduleWellnessCheckin() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final previousId = prefs.getInt('checkinNotificationId');
+      if (previousId != null) {
+        await NotificationService().cancelNotification(previousId);
+      }
+
+      const int notificationId = 90001;
+      final now = DateTime.now();
+      DateTime scheduleAt = DateTime(now.year, now.month, now.day, 9, 0);
+      if (scheduleAt.isBefore(now)) {
+        scheduleAt = scheduleAt.add(const Duration(days: 1));
+      }
+
+      await NotificationService().scheduleNotification(
+        id: notificationId,
+        title: 'Good morning!',
+        body: 'How are you feeling today?',
+        scheduledTime: scheduleAt,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: 'wellness_checkin',
+      );
+
+      await prefs.setInt('checkinNotificationId', notificationId);
+    } catch (e) {
+      debugPrint('Failed to schedule wellness check-in: $e');
+    }
+  }
+
+  void _startLocationTracking() {
+    _writeLiveLocationAndHistory();
+    _locationTimer?.cancel();
+    _locationTimer = Timer.periodic(const Duration(minutes: 30), (_) {
+      _writeLiveLocationAndHistory();
     });
   }
 
-  // Update Live Location to Firestore
-  Future<void> _updateLiveLocation() async {
+  Future<void> _writeLiveLocationAndHistory() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -102,13 +218,92 @@ class _HomeScreenState extends State<HomeScreen> {
     final position = await locationService.getCurrentLocation();
 
     if (position != null) {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final historyRef = userDoc
+          .collection('location_history')
+          .doc(DateTime.now().millisecondsSinceEpoch.toString());
+
+      await userDoc.set({
         'liveLocation': {
           'latitude': position.latitude,
           'longitude': position.longitude,
           'timestamp': FieldValue.serverTimestamp(),
         },
       }, SetOptions(merge: true));
+
+      await historyRef.set({
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      await _trimLocationHistory(user.uid);
+      await _checkGeofence(position);
+    }
+  }
+
+  Future<void> _trimLocationHistory(String uid) async {
+    try {
+      final snapshots = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('location_history')
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      if (snapshots.docs.length <= 48) return;
+
+      final batch = FirebaseFirestore.instance.batch();
+      for (int i = 48; i < snapshots.docs.length; i++) {
+        batch.delete(snapshots.docs[i].reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Failed trimming location history: $e');
+    }
+  }
+
+  Future<void> _checkGeofence(Position position) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final profile = _userProfile;
+      if (profile == null) return;
+
+      final homeLat = (profile['homeLatitude'] as num?)?.toDouble();
+      final homeLng = (profile['homeLongitude'] as num?)?.toDouble();
+      final radius = (profile['geofenceRadiusMeters'] as num?)?.toDouble() ?? 500;
+
+      if (homeLat == null || homeLng == null) return;
+
+      final distance = Geolocator.distanceBetween(
+        homeLat,
+        homeLng,
+        position.latitude,
+        position.longitude,
+      );
+
+      if (distance <= radius) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final lastAlertMs = prefs.getInt('lastGeofenceAlertMs') ?? 0;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      if (nowMs - lastAlertMs < const Duration(hours: 2).inMilliseconds) {
+        return;
+      }
+
+      await _functions.httpsCallable('triggerGeofenceAlert').call({
+        'uid': user.uid,
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'distanceMeters': distance,
+      });
+
+      await prefs.setInt('lastGeofenceAlertMs', nowMs);
+    } catch (e) {
+      debugPrint('Geofence check skipped: $e');
     }
   }
 
@@ -166,6 +361,16 @@ class _HomeScreenState extends State<HomeScreen> {
         'timestamp': FieldValue.serverTimestamp(),
         'status': 'Triggered',
         'triggeredBy': _userName ?? 'Elder',
+      });
+
+      await userDoc.collection('alerts').add({
+        'type': 'sos',
+        'title': 'SOS Activated',
+        'description':
+            '${_userName ?? "Elder"} triggered SOS and may need immediate help.',
+        'severity': 'CRITICAL',
+        'isRead': false,
+        'createdAt': FieldValue.serverTimestamp(),
       });
     }
 
@@ -397,6 +602,20 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            if (!_isOnline)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'You are offline — limited features available',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
             _buildDailyMedsBanner(),
             _buildAppointmentsBanner(),
             const SizedBox(height: 16),
