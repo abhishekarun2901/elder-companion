@@ -18,9 +18,7 @@ class PhoneLoginScreen extends StatefulWidget {
 }
 
 class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
-  final TextEditingController _phoneController = TextEditingController(
-    text: '+919207027558',
-  );
+  final TextEditingController _phoneController = TextEditingController();
   bool _isLoading = false;
 
   @override
@@ -44,8 +42,7 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
         MaterialPageRoute(
           builder: (_) => OtpVerificationScreen(
             title: 'Enter the SMS code',
-            subtitle:
-                'We sent an OTP to your phone. For the configured Firebase test number, use 123456.',
+            subtitle: 'We sent an OTP to your phone. Enter it below to continue.',
             initialSession: session,
             onVerify: AuthService.instance.verifyPhoneOtp,
             onResend: AuthService.instance.resendPhoneOtp,
@@ -99,34 +96,12 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                     ),
               ),
               const SizedBox(height: 24),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.teal.shade50,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Development test number',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    SizedBox(height: 8),
-                    Text('+919207027558'),
-                    SizedBox(height: 4),
-                    Text('Firebase test OTP: 123456'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
               TextField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(
                   labelText: 'Phone Number',
-                  hintText: '+919207027558',
+                  hintText: '+919876543210',
                   border: OutlineInputBorder(),
                 ),
               ),

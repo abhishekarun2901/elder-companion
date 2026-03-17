@@ -37,8 +37,6 @@ class LoginScreen extends StatelessWidget {
                       color: Colors.black54,
                     ),
               ),
-              const SizedBox(height: 24),
-              _CredentialCard(roleLabel: roleLabel),
               const SizedBox(height: 28),
               _MethodButton(
                 icon: Icons.phone_android,
@@ -87,47 +85,6 @@ class LoginScreen extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _CredentialCard extends StatelessWidget {
-  const _CredentialCard({
-    required this.roleLabel,
-  });
-
-  final String roleLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F8F8),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFD7E6E5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Development credentials for $roleLabel',
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          const Text('+919207027558'),
-          const SizedBox(height: 4),
-          const Text('22b827@nssce.ac.in'),
-          const SizedBox(height: 10),
-          Text(
-            'Firebase phone auth test OTP: 123456',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.black54,
-                ),
-          ),
-        ],
       ),
     );
   }

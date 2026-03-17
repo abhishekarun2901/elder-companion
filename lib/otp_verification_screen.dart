@@ -106,10 +106,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       });
       _startCountdown();
 
-      final resendMessage = updatedSession.devOtpHint == null
-          ? 'A fresh OTP has been sent.'
-          : 'A fresh OTP has been generated. Development OTP: ${updatedSession.devOtpHint}';
-      _showMessage(resendMessage);
+      _showMessage('A fresh OTP has been sent.');
     } on AuthFlowException catch (error) {
       _showMessage(error.message, isError: true);
     } catch (_) {
@@ -138,8 +135,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final devHint = _session.devOtpHint;
-
     return Scaffold(
       appBar: AppBar(title: const Text('Verify OTP')),
       body: SafeArea(
@@ -207,22 +202,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 ),
               ],
             ),
-            if (devHint != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.amber.shade200),
-                ),
-                child: Text(
-                  'Development OTP: $devHint',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
             const SizedBox(height: 40),
             SizedBox(
               width: double.infinity,

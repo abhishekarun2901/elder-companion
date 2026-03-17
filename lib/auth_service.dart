@@ -72,6 +72,7 @@ class AuthService {
   static const String _lastLoginMethodKey = 'last_login_method';
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  ConfirmationResult? _webConfirmationResult;
 
   String get apiBaseUrl {
     final configuredUrl = dotenv.env['AUTH_API_BASE_URL'];
@@ -119,7 +120,9 @@ class AuthService {
 
   Future<AuthOtpSession> startPhoneLogin(String rawPhone) async {
     final phoneNumber = normalizePhone(rawPhone);
-    final verificationData = await _requestPhoneVerification(phoneNumber);
+    final verificationData = kIsWeb
+        ? await _requestPhoneVerificationWeb(phoneNumber)
+        : await _requestPhoneVerification(phoneNumber);
     return AuthOtpSession(
       channel: AuthChannel.phone,
       identifier: phoneNumber,
@@ -131,10 +134,12 @@ class AuthService {
   }
 
   Future<AuthOtpSession> resendPhoneOtp(AuthOtpSession session) async {
-    final verificationData = await _requestPhoneVerification(
-      session.identifier,
-      resendToken: session.resendToken,
-    );
+    final verificationData = kIsWeb
+        ? await _requestPhoneVerificationWeb(session.identifier)
+        : await _requestPhoneVerification(
+            session.identifier,
+            resendToken: session.resendToken,
+          );
     return session.copyWith(
       verificationId: verificationData.verificationId,
       resendToken: verificationData.resendToken,
@@ -143,11 +148,32 @@ class AuthService {
   }
 
   Future<void> verifyPhoneOtp(AuthOtpSession session, String otp) async {
+    final code = _normalizeOtp(otp);
+
+    if (kIsWeb) {
+      final confirmationResult = _webConfirmationResult;
+      if (confirmationResult == null) {
+        throw const AuthFlowException(
+          'Phone verification has expired. Please resend the OTP.',
+        );
+      }
+
+      try {
+        await confirmationResult.confirm(code);
+        _webConfirmationResult = null;
+        await persistLastLoginMethod(AuthChannel.phone);
+        return;
+      } on FirebaseAuthException catch (error) {
+        throw AuthFlowException(
+          error.message ?? 'Failed to verify the phone OTP.',
+        );
+      }
+    }
+
     if (session.verificationId == null || session.verificationId!.isEmpty) {
       throw const AuthFlowException('Phone verification has expired. Please resend the OTP.');
     }
 
-    final code = _normalizeOtp(otp);
     final credential = PhoneAuthProvider.credential(
       verificationId: session.verificationId!,
       smsCode: code,
@@ -318,6 +344,27 @@ class AuthService {
     );
 
     return completer.future;
+  }
+
+  Future<_PhoneVerificationData> _requestPhoneVerificationWeb(
+    String phoneNumber,
+  ) async {
+    try {
+      _webConfirmationResult = null;
+      final confirmationResult = await _auth.signInWithPhoneNumber(phoneNumber);
+
+      _webConfirmationResult = confirmationResult;
+
+      return _PhoneVerificationData(
+        verificationId: confirmationResult.verificationId,
+        resendToken: null,
+      );
+    } on FirebaseAuthException catch (error) {
+      throw AuthFlowException(
+        error.message ??
+            'Failed to start web phone verification. Check Firebase authorized domains and try again.',
+      );
+    }
   }
 
   String _normalizeOtp(String otp) {
