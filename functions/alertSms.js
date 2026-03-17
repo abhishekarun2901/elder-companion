@@ -2,9 +2,16 @@ const crypto = require("crypto");
 const admin = require("firebase-admin");
 const twilio = require("twilio");
 
-const db = admin.firestore();
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
 const SMS_LOGS_COLLECTION = "sms_logs";
 const PHONE_PATTERN = /^\+[1-9]\d{9,14}$/;
+
+function getDb() {
+  return admin.firestore();
+}
 
 function getTwilioClient() {
   const sid = getRequiredEnv("TWILIO_ACCOUNT_SID");
@@ -133,7 +140,7 @@ async function writeSmsLog({
   errorMessage,
   metadata,
 }) {
-  await db.collection(SMS_LOGS_COLLECTION).add({
+  await getDb().collection(SMS_LOGS_COLLECTION).add({
     elderId: elderId || null,
     name: elderName || null,
     caregiverNumber: recipientNumber,

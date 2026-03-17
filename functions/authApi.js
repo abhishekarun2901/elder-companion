@@ -15,6 +15,8 @@ const MAX_ATTEMPTS = 3;
 const MAX_REQUESTS_PER_WINDOW = 3;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const REGION = process.env.AUTH_API_REGION || "us-central1";
+const DEFAULT_WHATSAPP_DEMO_NUMBER = "+916238049108";
+const DEFAULT_WHATSAPP_DEMO_OTP = "567456";
 
 app.use(cors({origin: true}));
 app.use(express.json());
@@ -127,7 +129,7 @@ async function createAndSendOtp({channel, identifier, sender}) {
     throw createHttpError(429, "Too many OTP requests. Try again in a minute.");
   }
 
-  const otp = generateOtp();
+  const otp = resolveOtpForChannel(channel, identifier);
   const expiresAt = admin.firestore.Timestamp.fromMillis(
       now + OTP_EXPIRY_SECONDS * 1000,
   );
@@ -143,15 +145,25 @@ async function createAndSendOtp({channel, identifier, sender}) {
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
+  let deliveryResult = {
+    deliveryMode: "live",
+  };
+
   try {
-    await sender(otp);
+    const result = await sender(otp);
+    if (result && typeof result === "object") {
+      deliveryResult = {
+        ...deliveryResult,
+        ...result,
+      };
+    }
   } catch (error) {
     await docRef.delete();
     throw error;
   }
 
   return {
-    deliveryMode: "live",
+    deliveryMode: deliveryResult.deliveryMode || "live",
   };
 }
 
@@ -239,11 +251,18 @@ async function sendWhatsappOtp(phone, otp) {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const templateName = process.env.WHATSAPP_TEMPLATE_NAME;
   const languageCode = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en";
+  const allowDemoFallback = isWhatsappDemoModeEnabled();
 
   if (!token || !phoneNumberId || !templateName) {
+    if (allowDemoFallback) {
+      return {
+        deliveryMode: "demo",
+      };
+    }
+
     throw createHttpError(
         500,
-        "WhatsApp delivery is not configured. Add the WhatsApp Cloud API env vars in functions/.env.",
+        "WhatsApp delivery is not configured. Add the WhatsApp Cloud API env vars in functions/.env or enable WHATSAPP_DEMO_MODE.",
     );
   }
 
@@ -285,6 +304,10 @@ async function sendWhatsappOtp(phone, otp) {
         `Failed to deliver WhatsApp OTP: ${errorBody || response.statusText}`,
     );
   }
+
+  return {
+    deliveryMode: "live",
+  };
 }
 
 async function sendEmailOtp(email, otp) {
@@ -357,6 +380,54 @@ function normalizeOtp(value) {
     throw createHttpError(400, "OTP must be 6 digits.");
   }
   return otp;
+}
+
+function resolveOtpForChannel(channel, identifier) {
+  if (channel === "whatsapp" && shouldUseWhatsappDemoFor(identifier)) {
+    return getWhatsappDemoOtp();
+  }
+
+  return generateOtp();
+}
+
+function shouldUseWhatsappDemoFor(identifier) {
+  if (!isWhatsappDemoModeEnabled()) {
+    return false;
+  }
+
+  const normalizedIdentifier = normalizePhone(identifier);
+  const demoNumber = getWhatsappDemoNumber();
+  if (normalizedIdentifier !== demoNumber) {
+    throw createHttpError(
+        400,
+        `Demo WhatsApp login is enabled only for ${demoNumber}.`,
+    );
+  }
+
+  return true;
+}
+
+function isWhatsappDemoModeEnabled() {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const templateName = process.env.WHATSAPP_TEMPLATE_NAME;
+  const envValue = process.env.WHATSAPP_DEMO_MODE;
+
+  if (envValue != null && envValue.trim()) {
+    return envValue === "true";
+  }
+
+  return !token || !phoneNumberId || !templateName;
+}
+
+function getWhatsappDemoNumber() {
+  return normalizePhone(
+      process.env.WHATSAPP_DEMO_NUMBER || DEFAULT_WHATSAPP_DEMO_NUMBER,
+  );
+}
+
+function getWhatsappDemoOtp() {
+  return normalizeOtp(process.env.WHATSAPP_DEMO_OTP || DEFAULT_WHATSAPP_DEMO_OTP);
 }
 
 function generateOtp() {

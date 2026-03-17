@@ -104,13 +104,13 @@ class _WhatsappLoginScreenState extends State<WhatsappLoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Live WhatsApp delivery',
+                      'WhatsApp OTP delivery',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     SizedBox(height: 8),
                     Text('Send OTPs to any valid WhatsApp-enabled phone number.'),
                     SizedBox(height: 4),
-                    Text('This requires your backend WhatsApp Cloud API credentials to be configured.'),
+                    Text('This requires your backend WhatsApp Cloud API credentials or a configured demo login.'),
                   ],
                 ),
               ),
