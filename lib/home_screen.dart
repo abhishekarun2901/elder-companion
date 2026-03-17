@@ -446,9 +446,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Emergency alert sent. Mitra is notifying ${recipients.length} contact${recipients.length == 1 ? '' : 's'} by SMS.',
-            ),
+            content: Text('Emergency alert sent.'),
             backgroundColor: Colors.green,
           ),
         );
