@@ -373,14 +373,6 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
                 keyboardType: TextInputType.phone,
                 isRequired: true,
               ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: ElevatedButton.icon(
-                  onPressed: _generateAndShareInviteCode,
-                  icon: const Icon(Icons.share),
-                  label: const Text('Generate Invite Code'),
-                ),
-              ),
               const SizedBox(height: 30),
 
               _buildSectionTitle('Emergency Contact', Colors.red),
