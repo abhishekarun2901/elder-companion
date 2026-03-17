@@ -1,9 +1,6 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:share_plus/share_plus.dart';
 import 'home_screen.dart'; // Import HomeScreen for navigation
 
 class ProfileDetailsScreen extends StatefulWidget {
@@ -103,67 +100,6 @@ class _ProfileDetailsScreenState extends State<ProfileDetailsScreen> {
       'createdAt': FieldValue.serverTimestamp(),
       'isPrimary': true,
     });
-  }
-
-  String _generateInviteCode({int length = 6}) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final random = Random.secure();
-    return List.generate(length, (_) => chars[random.nextInt(chars.length)])
-        .join();
-  }
-
-  Future<void> _generateAndShareInviteCode() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final code = _generateInviteCode();
-    final expiresAt = Timestamp.fromDate(
-      DateTime.now().add(const Duration(hours: 24)),
-    );
-
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-      'pendingInviteCode': code,
-      'inviteCodeExpiresAt': expiresAt,
-    }, SetOptions(merge: true));
-
-    if (!mounted) return;
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Caregiver Invite Code'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              code,
-              style: const TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 4,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Share this code with your caregiver — valid for 24 hours.',
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Share.share('Use this Mitra caregiver invite code: $code');
-            },
-            child: const Text('Share'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
