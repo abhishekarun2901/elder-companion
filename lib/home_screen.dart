@@ -394,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       builder: (_) => AlertDialog(
         title: const Text('Send Emergency Alert?'),
         content: Text(
-          'This will notify your caregiver and emergency contacts through Mitra SMS:\n\n${recipients.join('\n')}',
+          'This will notify your caregiver and emergency contacts:\n\n${recipients.join('\n')}',
         ),
         actions: [
           TextButton(
