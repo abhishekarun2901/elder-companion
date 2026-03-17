@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isListening = false;
   Timer? _locationTimer;
   StreamSubscription<bool>? _connectivitySub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userProfileSub;
   bool _isOnline = true;
 
   String? _normalizePhone(String? value) {
@@ -123,6 +124,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _updateActivity(isOpen: true);
     _loadEmergencyContact();
+    _listenToUserProfile();
     _startLocationTracking();
     _isOnline = ConnectivityService().isOnline;
     ConnectivityService().refreshStatus();
@@ -153,8 +155,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _updateActivity(isOpen: false);
     _locationTimer?.cancel();
     _connectivitySub?.cancel();
+    _userProfileSub?.cancel();
     _voiceService.isListeningNotifier.removeListener(_onListeningStateChanged);
     super.dispose();
+  }
+
+  void _listenToUserProfile() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _userProfileSub?.cancel();
+    _userProfileSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen((snapshot) async {
+          final data = snapshot.data();
+          if (data == null || !mounted) return;
+
+          final emergencyContact = data['emergencyContact'];
+          final emergencyPhone = _normalizePhone(
+            emergencyContact is Map ? emergencyContact['phone']?.toString() : null,
+          );
+
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('cached_profile', jsonEncode(data));
+
+          if (!mounted) return;
+          setState(() {
+            _userProfile = data;
+            _userName = data['name']?.toString();
+            _emergencyContactPhone = emergencyPhone ?? _emergencyContactPhone;
+          });
+        }, onError: (error) {
+          debugPrint('Failed to listen to user profile: $error');
+        });
   }
 
   Future<void> _updateActivity({required bool isOpen}) async {
